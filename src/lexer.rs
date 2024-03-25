@@ -1,107 +1,5 @@
-#![allow(clippy::never_loop)]
-
 use std::{marker::PhantomData, ptr};
 use crate::{constant, core::JsonToken};
-
-// pub struct TokenIter<'a, Iter: Iterator<Item = char>> {
-//     src: &'a str,
-//     iter: Iter,
-//     pos: usize,
-//     _next_item: Option<char>,
-// }
-
-// impl <'a, Iter: Iterator<Item = char>> Iterator for TokenIter<'a, Iter> {
-//     type Item = JsonToken;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         self.parse_token().map(|(tk, next_item)| {
-//             if let Some(next) = next_item {
-//                 self._next_item.replace(next);
-//             }
-//             tk
-//         })
-//     }
-// }
-
-// impl <'a, Iter: Iterator<Item = char>> TokenIter<'a, Iter> {
-//     pub fn parse_token(&mut self) -> Option<(JsonToken, Option<char>)> {
-//         let at: usize = self.pos;
-//         let mut end: usize = 0;
-//         let next_item = self._next_item.take().or_else(|| self.iter.next())?;
-//         match next_item {
-//             // ws = *(
-//             //     %x20 /              ; Space
-//             //     %x09 /              ; Horizontal tab
-//             //     %x0A /              ; Line feed or New line
-//             //     %x0D )              ; Carriage return
-//             '\u{0020}' | '\u{0009}' | '\u{000A}' | '\u{000D}'  => loop {
-//                 end += 1;
-//                 // parse all character wrapped inside single quote
-//                 let Some(next_item) = self.iter.next() else {
-//                     break JsonToken::whitespace(at, end).into()
-//                 };
-//                 if !matches!(next_item, '\u{0020}' | '\u{0009}' | '\u{000A}' | '\u{000D}') {
-//                     break Some((JsonToken::whitespace(at, end), Some(next_item)))
-//                 }
-//             },
-//             '{' => JsonToken::open_curly(at).into(),
-//             '}' => JsonToken::close_curly(at).into(),
-//             '[' => JsonToken::open_square(at).into(),
-//             ']' => JsonToken::close_square(at).into(),
-//             ':' => JsonToken::colon(at).into(),
-//             ',' => JsonToken::comma(at).into(),
-//             // string and literal
-//             '\'' => loop {
-//                 end += 1;
-//                 // parse all character wrapped inside single quote
-//                 let Some(next_item) = self.iter.next() else {
-//                     break JsonToken::error(constant::MISSING_SINGLE_COLON, at, end).into();
-//                 };
-//                 if next_item.eq(&'\'') {
-//                     break JsonToken::str(at, end).into()
-//                 }
-
-//             },
-//             '"' => loop {
-//                 end += 1;
-//                 // parse all character wrapped inside double quote
-//                 let Some(next_item) = self.iter.next() else {
-//                     break JsonToken::error(constant::MISSING_DOUBLE_COLON, at, end).into();
-//                 };
-//                 if next_item.eq(&'"') {
-//                     break JsonToken::str(at, end).into()
-//                 }
-//             },
-//             // identity or keyword
-//             'a'..='z' | 'A'..='Z' | '_' => loop {
-//                 end += 1;
-//                 // parse all character wrapped inside single quote
-//                 // todo: parse once more time because this ident potential to be a keyword (true, false, NaN, ...)
-//                 let Some(next_item) = self.iter.next() else {
-//                     break JsonToken::parse_keyword(self.src, at, end).into()
-//                 };
-//                 if !matches!(next_item, 'a'..='z' | 'A'..='Z' | '_') {
-//                     break Some((JsonToken::parse_keyword(self.src, at, end), Some(next_item)))
-//                 }
-//             },
-//             // number
-//             '0'..='9' => loop {
-//                 end += 1;
-//                 // parse all number include dot(.), exhauted when reaching none digit character
-//                 let Some(next_item) = self.iter.next() else {
-//                     break JsonToken::number(at, end).into();
-//                 };
-//                 if !next_item.is_ascii_digit() {
-//                     break Some((JsonToken::number(at, end), Some(next_item)));
-//                 }
-//             },
-//             unknown_token => JsonToken::error(format!("doesn't support token: {}", unknown_token), at, end).into()
-//         }.map(|tk| {
-//             self.pos += if end > 0 { end } else { 1 };
-//             tk
-//         })
-//     }
-// }
 
 pub struct Tokenizer<'a> {
     ptr: *const u8,
@@ -248,20 +146,6 @@ impl <'a> Tokenizer<'a> {
         }
     }
 }
-
-// impl <'a> IntoIterator for Tokenizer<'a> {
-//     type Item = JsonToken;
-//     type IntoIter = TokenIter<'a, Chars<'a>>;
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         TokenIter {
-//             src: self.source,
-//             iter: self.source.chars(),
-//             pos: 0,
-//             _next_item: None,
-//         }
-//     }
-// }
 
 #[cfg(test)]
 mod tests {
