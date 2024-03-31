@@ -119,43 +119,37 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
             Some(JsonToken::Punct(Punct::CloseSquare, _)) => return Ok(None),
             Some(JsonToken::Punct(_, span)) => return Err(JsonError::invalid_array(span)),
             Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(err, span)),
-            None =>  return Err(JsonError::custom("still incomplete parsing this array", Span::default()))
+            None =>  return Err(JsonError::custom("[parse_arr_item] reaching None when parsing", Span::default()))
         };
         Ok(Some(JsonProp::new(JsonInt(pos), item_value)))
     }
 
     fn parse_prop(&mut self) -> Result<Option<JsonProp<JsonStr>>, JsonError> {
-        let key = self.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace, _)));
-        let colon = self.next_token();
-        let value = self.next_token();
-
-        let (key_span, _) = match (key, colon) {
-            (
-                Some(JsonToken::Data(JsonType::Ident | JsonType::Str, kspan)),
-                Some(JsonToken::Punct(Punct::Colon, cspan))
-            ) => (kspan, cspan),
-            (
-                Some(JsonToken::Punct(Punct::CloseCurly, _)),
-                _,
-            ) => return Ok(None),
-            (
-                Some(JsonToken::Data(_, key_span)),
-                Some(JsonToken::Punct(_, colon_span))
-            )                                     => return Err(JsonError::empty_json(key_span.extend(colon_span))),
-            (Some(JsonToken::Error(err, span)),_) => return Err(JsonError::custom(err, span)),
-            (_,Some(JsonToken::Error(err, span))) => return Err(JsonError::custom(err, span)),
-            (_,_)                                 => return Err(JsonError::empty_json(Span::default())),
+        let key_span = match self.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace, _))) {
+            Some(JsonToken::Data(JsonType::Ident | JsonType::Str, kspan)) => kspan,
+            Some(JsonToken::Punct(Punct::CloseCurly, _)) => return Ok(None),
+            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(err, span)),
+            None => return Err(JsonError::custom("[parse_prop] `key` should not be None", Span::default())),
+            _ => return Err(JsonError::custom("[parse_prop] unexpected token when parsing key", Span::default())),
         };
 
-        let v = match value {
-            Some(JsonToken::Punct(Punct::OpenCurly, _)) => self.parse_obj(),
-            Some(JsonToken::Punct(Punct::OpenSquare, _)) => self.parse_array(),
-            Some(JsonToken::Data(data, data_span)) => Ok(JsonValue::Data(data, data_span)),
+        let _ = match self.next_token() {
+            Some(JsonToken::Punct(Punct::Colon, cspan)) => cspan,
             Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(err, span)),
-            _ => return Err(JsonError::empty_json(Span::default())),
-        }?;
+            None => return Err(JsonError::custom("[parse_prop] `colon` should not be None", Span::default())),
+            _ => return Err(JsonError::custom("[parse_prop] unexpected token when parsing `colon`", Span::default()))
+        };
 
-        Ok(Some(JsonProp::new(JsonStr(key_span), v)))
+        let value = match self.next_token() {
+            Some(JsonToken::Punct(Punct::OpenCurly, _)) => self.parse_obj()?,
+            Some(JsonToken::Punct(Punct::OpenSquare, _)) => self.parse_array()?,
+            Some(JsonToken::Data(data, data_span)) => JsonValue::Data(data, data_span),
+            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(err, span)),
+            Some(_) => return Err(JsonError::custom("[parse_prop] not able to parse this token", Span::default())), 
+            None => return Err(JsonError::custom("[parse_prop] parsing prop value but reaching None", Span::default())),
+        };
+
+        Ok(Some(JsonProp::new(JsonStr(key_span), value)))
     }
 }
 
