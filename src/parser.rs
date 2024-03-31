@@ -133,7 +133,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
             _ => return Err(JsonError::custom("[parse_prop] unexpected token when parsing key", Span::default())),
         };
 
-        let _ = match self.next_token() {
+        let _colon = match self.next_token() {
             Some(JsonToken::Punct(Punct::Colon, cspan)) => cspan,
             Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(err, span)),
             None => return Err(JsonError::custom("[parse_prop] `colon` should not be None", Span::default())),
