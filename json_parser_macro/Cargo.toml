@@ -1,0 +1,14 @@
+[package]
+name = "json_parser_macro"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+syn = { version = "2.0.57", features = ["full"]}
+quote = { version = "1.0.35" }
+proc-macro2 = { version = "1.0.79" }
+
+[lib]
+proc-macro = true
