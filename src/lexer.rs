@@ -53,14 +53,14 @@ impl <'a> Tokenizer<'a> {
     fn parse_keyword(&self, start: usize) -> JsonToken {
         let gap = self.pos - start;
         let buf = unsafe { std::slice::from_raw_parts(self.ptr.add(start), gap) };
-        let str_slice = std::str::from_utf8(buf).unwrap();
-        match str_slice {
+        std::str::from_utf8(buf).map(|res| match res {
             "true"      => JsonToken::boolean(true, start),
             "false"     => JsonToken::boolean(false, start),
             "undefined" => JsonToken::undefined(start),
             x if x.eq_ignore_ascii_case("nan") => JsonToken::NaN(start),
             _           => JsonToken::ident(start, self.pos),
-        }
+        }).unwrap_or_else(|err| JsonToken::error(err.to_string(), start, gap))
+        
     }
 }
 
@@ -103,7 +103,7 @@ impl <'a> Tokenizer<'a> {
             b'\'' => loop {
                 // parse all character wrapped inside single quote
                 let Some(next_item) = self.next_item() else {
-                    break JsonToken::error(constant::MISSING_SINGLE_COLON, at, self.pos).into();
+                    break JsonToken::error(constant::msg::MISSING_SINGLE_COLON, at, self.pos).into();
                 };
                 if next_item.eq(&b'\'') {
                     break JsonToken::str(at, self.pos).into()
@@ -113,7 +113,7 @@ impl <'a> Tokenizer<'a> {
             b'"' => loop {
                 // parse all character wrapped inside double quote
                 let Some(next_item) = self.next_item() else {
-                    break JsonToken::error(constant::MISSING_DOUBLE_COLON, at, self.pos).into();
+                    break JsonToken::error(constant::msg::MISSING_DOUBLE_COLON, at, self.pos).into();
                 };
                 if next_item.eq(&b'"') {
                     break JsonToken::str(at, self.pos).into()
@@ -170,11 +170,11 @@ mod tests {
         let mut kws = Tokenizer::from("true false NaN undefined");
         
         assert_eq!(Some(JsonToken::boolean(true, 0)) , kws.next());
-        assert_eq!(Some(JsonToken::whitespace(4,5))    , kws.next());
+        assert_eq!(Some(JsonToken::whitespace(4,5))  , kws.next());
         assert_eq!(Some(JsonToken::boolean(false, 5)), kws.next());
-        assert_eq!(Some(JsonToken::whitespace(10, 11))   , kws.next());
+        assert_eq!(Some(JsonToken::whitespace(10,11)), kws.next());
         assert_eq!(Some(JsonToken::NaN(11))          , kws.next());
-        assert_eq!(Some(JsonToken::whitespace(14, 15))   , kws.next());
+        assert_eq!(Some(JsonToken::whitespace(14,15)), kws.next());
         assert_eq!(Some(JsonToken::undefined(15))    , kws.next());
         assert_eq!(None                              , kws.next());
     }
@@ -183,13 +183,13 @@ mod tests {
     pub fn parse_str_missing_() {
         let mut errors = Tokenizer::from("{ totally_error_str: 'abc }");
 
-        assert_eq!(Some(JsonToken::open_curly(0)) , errors.next());
-        assert_eq!(Some(JsonToken::whitespace(1,2)) , errors.next());
-        assert_eq!(Some(JsonToken::ident(2, 19))  , errors.next());
-        assert_eq!(Some(JsonToken::colon(19))     , errors.next());
+        assert_eq!(Some(JsonToken::open_curly(0))  , errors.next());
+        assert_eq!(Some(JsonToken::whitespace(1,2)), errors.next());
+        assert_eq!(Some(JsonToken::ident(2, 19))   , errors.next());
+        assert_eq!(Some(JsonToken::colon(19))      , errors.next());
         assert_eq!(Some(JsonToken::whitespace(20,21)), errors.next());
-        assert_eq!(Some(JsonToken::error(constant::MISSING_SINGLE_COLON, 21, 27)), errors.next());
-        assert_eq!(None                           , errors.next());
+        assert_eq!(Some(JsonToken::error(constant::msg::MISSING_SINGLE_COLON, 21, 27)), errors.next());
+        assert_eq!(None                            , errors.next());
     }
 
     #[test]

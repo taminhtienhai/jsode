@@ -48,6 +48,16 @@ impl Span {
     pub fn with_counter(start: usize, counter: usize) -> Self {
         Self { start, end: start + counter, col: 0, row: 0 }
     }
+
+    #[inline(always)]
+    pub fn gap(&self) -> usize {
+        self.end - self.start
+    }
+
+    #[inline]
+    pub fn extend(&self, other: Span) -> Span {
+        Span::new(self.start, other.end)
+    }
 }
 
 #[derive(PartialEq, PartialOrd, Debug)]
@@ -130,9 +140,9 @@ impl JsonToken {
 pub trait JsonKey {}
 
 #[derive(Default)]
-pub struct JsonStr(Span);
+pub struct JsonStr(pub Span);
 #[derive(Default)]
-pub struct JsonInt(Span);
+pub struct JsonInt(pub usize);
 
 impl JsonKey for JsonStr {}
 impl JsonKey for JsonInt {}
@@ -150,9 +160,24 @@ pub struct JsonProp<K: JsonKey> {
     pub value: JsonValue,
 }
 
+impl <K: JsonKey> JsonProp<K> {
+    pub fn new(k: K, v: JsonValue) -> Self {
+        Self { key: k, value: v }
+    }
+}
+
 pub struct JsonObject {
     properties: Vec<JsonProp<JsonStr>>,
     span: Span,
+}
+
+impl JsonObject {
+    pub fn new(properties: Vec<JsonProp<JsonStr>>, span: Span) -> Self {
+        Self {
+            properties,
+            span,
+        }
+    }
 }
 
 pub struct JsonArray {
@@ -160,28 +185,17 @@ pub struct JsonArray {
     span: Span,
 }
 
+impl JsonArray {
+    pub fn new(properties: Vec<JsonProp<JsonInt>>, span: Span) -> Self {
+        Self {
+            properties,
+            span,
+        }
+    }
+}
+
 pub enum JsonValue {
     Object(JsonObject),
     Array(JsonArray),
     Data(JsonType, Span),
-}
-
-#[derive(Debug)]
-pub struct JsonError {
-    target: Span,
-    context: Vec<String>,
-}
-
-impl Display for JsonError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "parse json fail due to ...")
-    }
-}
-
-impl std::error::Error for JsonError {}
-
-pub type JsonResult<T> = std::result::Result<T, JsonError>;
-
-mod internal {
-
 }
