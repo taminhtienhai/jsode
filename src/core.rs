@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use crate::{lexer::Tokenizer, parser::JsonParser};
 
 #[derive(PartialEq, PartialOrd, Debug)]
 pub enum JsonType {
@@ -30,7 +30,7 @@ pub enum Punct {
     WhiteSpace ,
 }
 
-#[derive(Default, PartialEq, PartialOrd, Debug)]
+#[derive(Default, PartialEq, PartialOrd, Clone, Debug)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
@@ -57,6 +57,13 @@ impl Span {
     #[inline]
     pub fn extend(&self, other: Span) -> Span {
         Span::new(self.start, other.end)
+    }
+
+    #[inline]
+    pub fn collapse(mut self, size: usize) -> Span {
+        self.start += size;
+        self.end -= size;
+        self
     }
 }
 
@@ -136,7 +143,6 @@ impl JsonToken {
 }
 
 /////////////////////
-
 pub trait JsonKey {}
 
 #[derive(Default)]
@@ -198,4 +204,58 @@ pub enum JsonValue {
     Object(JsonObject),
     Array(JsonArray),
     Data(JsonType, Span),
+}
+
+impl JsonValue {
+    pub fn get_span(&self) -> Span {
+        match self {
+            Self::Object(JsonObject { span, .. }) => span.clone(),
+            Self::Array(JsonArray { span, .. }) => span.clone(),
+            Self::Data(_, span) => span.clone(),
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct JsonOutput<'a> {
+    // ty: JsonType,
+    // span: Span, 
+    raw: &'a str,
+}
+
+impl <'a> JsonOutput<'a> {
+    pub fn new(raw: &'a str) -> Self {
+        Self { raw }
+    }
+}
+
+pub trait JsonIndex<'a, K> {
+    type Output;
+    fn get(&self, key: K, indexer: &'a JsonParser<Tokenizer<'a>>) -> Self::Output;
+}
+
+impl <'a> JsonIndex<'a, &'a str> for JsonValue {
+    type Output = Option<JsonOutput<'a>>;
+
+    fn get(&self, key: &str, indexer: &'a JsonParser<Tokenizer<'a>>) -> Self::Output {
+        match self {
+            Self::Object(obj) => {
+                for prop in obj.properties.iter() {
+                    // warn: skip error here
+                    let Ok(inner_key) = indexer.take_slice(prop.key.0.clone()) else {
+                        return None;
+                    };
+                    if key.eq(inner_key) {
+                        let Ok(raw) = indexer.take_slice(prop.value.get_span()) else {
+                            return None;
+                        };
+                        return Some(JsonOutput { raw });
+                    }
+                }
+                None
+            },
+            Self::Array(_) => None,
+            Self::Data(_,_) => None,
+        }
+    }
 }

@@ -1,4 +1,4 @@
-use crate::{core::{JsonArray, JsonInt, JsonObject, JsonProp, JsonStr, JsonToken, JsonType, JsonValue, Punct, Span,}, error::JsonError, lexer::Tokenizer};
+use crate::{core::{JsonArray, JsonInt, JsonObject, JsonProp, JsonStr, JsonToken, JsonType, JsonValue, Punct, Span,}, error::JsonError, indexer::JsonIndexer, lexer::Tokenizer};
 
 pub struct JsonParser<Iter: Iterator<Item = JsonToken>> {
     iter: Iter,
@@ -29,6 +29,10 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
             iter: Tokenizer::from(src),
         }
     }
+
+    pub fn indexer_from(&'tk self, ast: JsonValue) -> JsonIndexer<'tk> {
+        JsonIndexer::new(self, ast)
+    }
 }
 
 impl <'tk> JsonParser<Tokenizer<'tk>> {
@@ -44,7 +48,12 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
     }
 }
 
+
 impl <'tk> JsonParser<Tokenizer<'tk>> {
+    #[inline]
+    pub fn take_slice(&self, span: Span) -> Result<&str, JsonError> {
+        self.iter.take_slice(span)
+    }
 
     // fetching next token, skip all 'whitespace'
     #[inline]
@@ -115,7 +124,8 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
 
     fn parse_prop(&mut self) -> Result<Option<JsonProp<JsonStr>>, JsonError> {
         let key_span = match self.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace, _))) {
-            Some(JsonToken::Data(JsonType::Ident | JsonType::Str, kspan)) => kspan,
+            Some(JsonToken::Data(JsonType::Str, span)) => span.collapse(1),
+            Some(JsonToken::Data(JsonType::Ident, span)) => span,
             Some(JsonToken::Punct(Punct::CloseCurly, _)) => return Ok(None),
             Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(err, span)),
             None => return Err(JsonError::custom("[parse_prop] `key` should not be None", Span::default())),
@@ -145,6 +155,8 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
 
 #[cfg(test)]
 mod tests {
+    use crate::core::JsonOutput;
+
     use super::*;
 
     #[test]
@@ -161,5 +173,18 @@ mod tests {
         let mut arr = JsonParser::new(json);
 
         let _ = arr.parse().inspect_err(|e| eprintln!("{}", e));
+    }
+
+    #[test]
+    fn index_json_item() {
+        let mut obj = JsonParser::new("{'a':1,\"b\":2, c: 3}");
+        let ast = obj.parse().unwrap();
+
+        let indexer = obj.indexer_from(ast);
+
+        assert_eq!(Some(JsonOutput::new("1")), indexer.index("a"));
+        assert_eq!(Some(JsonOutput::new("2")), indexer.index("b"));
+        assert_eq!(Some(JsonOutput::new("3")), indexer.index("c"));
+        assert_eq!(None                      , indexer.index("d"));
     }
 }

@@ -1,5 +1,5 @@
 use std::{marker::PhantomData, ptr};
-use crate::{constant, core::JsonToken};
+use crate::{constant, core::{JsonToken, Span}, error::JsonError};
 
 pub struct Tokenizer<'a> {
     ptr: *const u8,
@@ -35,6 +35,15 @@ impl <'a> Iterator for Tokenizer<'a> {
 }
 
 impl <'a> Tokenizer<'a> {
+    #[inline]
+    pub fn take_slice(&self, span: Span) -> Result<&str, JsonError> {
+        unsafe {
+            let slice = std::slice::from_raw_parts(self.ptr.add(span.start), span.gap());
+            std::str::from_utf8(slice)
+                .map_err(|err| JsonError::custom(err.to_string(), Span::default()))
+        }
+    }
+
     fn next_item(&mut self) -> Option<u8> {
         if self.pos >= self.size {
             None
