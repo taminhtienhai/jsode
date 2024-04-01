@@ -1,19 +1,13 @@
-use crate::{core::{JsonArray, JsonInt, JsonObject, JsonProp, JsonStr, JsonToken, JsonType, JsonValue, Punct, Span}, error::JsonError, lexer::Tokenizer};
+use crate::{core::{JsonArray, JsonInt, JsonObject, JsonProp, JsonStr, JsonToken, JsonType, JsonValue, Punct, Span,}, error::JsonError, lexer::Tokenizer};
 
 pub struct JsonParser<Iter: Iterator<Item = JsonToken>> {
     iter: Iter,
-    state: JsonState,
-    // prev_token: Option<JsonToken>,
-    // cur_token: Option<JsonToken>,
 }
 
 impl <'tk> From<Tokenizer<'tk>> for JsonParser<Tokenizer<'tk>> {
     fn from(value: Tokenizer<'tk>) -> Self {
         Self {
             iter: value,
-            state: JsonState::Idle,
-            // prev_token: None,
-            // cur_token: None,
         }
     }
 }
@@ -33,7 +27,6 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
     pub fn new(src: &'tk str) -> Self {
         Self {
             iter: Tokenizer::from(src),
-            state: JsonState::Idle,
         }
     }
 }
@@ -52,7 +45,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
 }
 
 impl <'tk> JsonParser<Tokenizer<'tk>> {
-    
+
     // fetching next token, skip all 'whitespace'
     #[inline]
     pub fn next_token(&mut self) -> Option<JsonToken> {
@@ -74,10 +67,6 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
             }
             return Some(token);
         }
-    }
-
-    pub fn change_state_to(&mut self, new_state: JsonState) {
-        self.state = new_state;
     }
 }
 
@@ -160,7 +149,7 @@ mod tests {
 
     #[test]
     fn parse_json_object() {
-        let json = "{'a':1,'b':2}";
+        let json = "{'a':1 ,'b':2}";
         let mut obj = JsonParser::new(json);
 
         let _ = obj.parse().inspect_err(|e| eprintln!("{}", e));
