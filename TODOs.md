@@ -7,11 +7,24 @@
 ### Parser
 
 - [x] parse token stream into JsonValue tree
+- [x] tracking '[]' and '{}' brackets 
 - [ ] more helpful error message
-
+- [ ] making parsing run parallel (hard)
 
 ### Indexer
 
-- [x] make JsonValue able to index/get it's value when given a key
-    - how to access `&str` source via JsonValue?
+- [ ] make JsonValue able to index/get it's value when given a key
+    - [x] index object
+    - [x] index array
+    - [ ] improve index object performance (currently O(n))
 - [ ] allow parse ast into struct
+- [ ] support type check on JsonOutput(idea: `fn is<T>(&self) -> bool`)
+
+### Transform & Search
+
+- [ ] Parse AST into Struct
+- [ ] Query on AST
+
+### Bug
+
+- [x] `get_span` inside `parse_obj` auto increase `start` & `end` by 1???

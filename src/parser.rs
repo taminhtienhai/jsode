@@ -82,19 +82,21 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
 impl <'tk> JsonParser<Tokenizer<'tk>> {
     // call this when reaching '{'
     fn parse_obj(&mut self) -> Result<JsonValue, JsonError> {
+        let start = self.iter.prev_pos();
         let mut props = Vec::<JsonProp<JsonStr>>::new();
         loop {
             let prop = self.parse_prop()?;
             if let Some(property) = prop {
                 props.push(property);
             } else {
-                return Ok(JsonValue::Object(JsonObject::new(props, Span::default())))
+                return Ok(JsonValue::Object(JsonObject::new(props, Span::new(start, self.iter.cur_pos()))))
             }
         }
     }
 
     // being call when reaching '['
     fn parse_array(&mut self) -> Result<JsonValue, JsonError> {
+        let start = self.iter.prev_pos();
         let mut items = Vec::<JsonProp<JsonInt>>::new();
         let mut pos = 0;
         loop {
@@ -103,7 +105,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
                 pos += 1;
                 items.push(it);
             } else {
-                return Ok(JsonValue::Array(JsonArray::new(items, Span::default())))
+                return Ok(JsonValue::Array(JsonArray::new(items, Span::new(start, self.iter.cur_pos()))));
             }
         }
     }

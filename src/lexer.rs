@@ -35,6 +35,16 @@ impl <'a> Iterator for Tokenizer<'a> {
 }
 
 impl <'a> Tokenizer<'a> {
+    #[inline(always)]
+    pub fn prev_pos(&self) -> usize {
+        self.pos - 1
+    }
+
+    #[inline(always)]
+    pub fn cur_pos(&self) -> usize {
+        self.pos
+    }
+
     #[inline]
     pub fn take_slice(&self, span: Span) -> Result<&str, JsonError> {
         unsafe {

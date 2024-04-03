@@ -216,28 +216,31 @@ impl JsonValue {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Debug)]
 pub struct JsonOutput<'a> {
-    // ty: JsonType,
-    // span: Span, 
+    // span: Span,
     raw: &'a str,
 }
 
 impl <'a> JsonOutput<'a> {
+    // pub fn new(raw: &'a str, span: Span) -> Self {
+    //     Self { raw, span, }
+    // }
     pub fn new(raw: &'a str) -> Self {
         Self { raw }
     }
 }
 
-pub trait JsonIndex<'a, K> {
-    type Output;
-    fn get(&self, key: K, indexer: &'a JsonParser<Tokenizer<'a>>) -> Self::Output;
+pub trait JsonIndex {
+    type Output<'out>;
+    fn get_object_key<'obj>(&self, key: &'obj str, indexer: &'obj JsonParser<Tokenizer<'obj>>) -> Self::Output<'obj>;
+    fn get_array_item<'arr>(&self, key: usize, indexer: &'arr JsonParser<Tokenizer<'arr>>) -> Self::Output<'arr>;
 }
 
-impl <'a> JsonIndex<'a, &'a str> for JsonValue {
-    type Output = Option<JsonOutput<'a>>;
+impl JsonIndex for JsonValue {
+    type Output<'out> = Option<JsonOutput<'out>>;
 
-    fn get(&self, key: &str, indexer: &'a JsonParser<Tokenizer<'a>>) -> Self::Output {
+    fn get_object_key<'o>(&self, key: &'o str, indexer: &'o JsonParser<Tokenizer<'o>>) -> Self::Output<'o> {
         match self {
             Self::Object(obj) => {
                 for prop in obj.properties.iter() {
@@ -246,16 +249,34 @@ impl <'a> JsonIndex<'a, &'a str> for JsonValue {
                         return None;
                     };
                     if key.eq(inner_key) {
-                        let Ok(raw) = indexer.take_slice(prop.value.get_span()) else {
+                        let prop_span = prop.value.get_span();
+                        let Ok(raw) = indexer.take_slice(prop_span) else {
                             return None;
                         };
-                        return Some(JsonOutput { raw });
+                        return Some(JsonOutput::new(raw));
                     }
                 }
                 None
             },
-            Self::Array(_) => None,
-            Self::Data(_,_) => None,
+            _ => None,
+        }
+    }
+    
+    fn get_array_item<'a>(&self, key: usize, indexer: &'a JsonParser<Tokenizer<'a>>) -> Self::Output<'a> {
+        match self {
+            Self::Array(arr) => {
+                if key >= arr.properties.len() {
+                    return None;
+                }
+                let item = arr.properties.get(key)?;
+                let item_span = item.value.get_span();
+                let Ok(raw) = indexer.take_slice(item_span) else {
+                    return None;
+                };
+                return Some(JsonOutput::new(raw));
+
+            },
+            _ => None,
         }
     }
 }
