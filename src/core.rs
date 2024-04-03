@@ -1,4 +1,6 @@
-use crate::{lexer::Tokenizer, parser::JsonParser};
+use std::{any::TypeId, str::FromStr};
+
+use crate::{deserialize::Deser, error::JsonError, lexer::Tokenizer, parser::JsonParser};
 
 #[derive(PartialEq, PartialOrd, Debug)]
 pub enum JsonType {
@@ -230,6 +232,12 @@ impl <'a> JsonOutput<'a> {
         Self { raw }
     }
 }
+
+impl <'out> JsonOutput<'out> {
+    pub fn parse<T: FromStr>(&self) -> Result<T, JsonError> {
+        self.raw.parse::<T>().map_err(|_| JsonError::custom("not correct type", Span::default()))
+    }
+} 
 
 pub trait JsonIndex {
     type Output<'out>;

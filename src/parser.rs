@@ -22,15 +22,15 @@ pub enum JsonState {
     Error,
 }
 
-impl <'tk> JsonParser<Tokenizer<'tk>> {
+impl <'par> JsonParser<Tokenizer<'par>> {
     #[inline]
-    pub fn new(src: &'tk str) -> Self {
+    pub fn new(src: &'par str) -> Self {
         Self {
             iter: Tokenizer::from(src),
         }
     }
 
-    pub fn indexer_from(&'tk self, ast: JsonValue) -> JsonIndexer<'tk> {
+    pub fn indexer_from(&'par self, ast: &'par JsonValue) -> JsonIndexer<'par> {
         JsonIndexer::new(self, ast)
     }
 }

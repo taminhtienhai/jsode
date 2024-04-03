@@ -4,13 +4,13 @@ use crate::{
     parser::JsonParser,
 };
 
-pub struct JsonIndexer<'tk> {
-    parser: &'tk JsonParser<Tokenizer<'tk>>,
-    ast: JsonValue,
+pub struct JsonIndexer<'idx> {
+    parser: &'idx JsonParser<Tokenizer<'idx>>,
+    ast: &'idx JsonValue,
 }
 
-impl<'tk> JsonIndexer<'tk> {
-    pub fn new(parser: &'tk JsonParser<Tokenizer<'tk>>, ast: JsonValue) -> Self {
+impl<'idx> JsonIndexer<'idx> {
+    pub fn new(parser: &'idx JsonParser<Tokenizer<'idx>>, ast: &'idx JsonValue) -> Self {
         Self { parser, ast }
     }
 }
@@ -51,7 +51,7 @@ mod tests {
         let mut obj = JsonParser::new("{'a':1,\"b\":2, c: 3,d : [1,2,3]}");
         let ast = obj.parse().unwrap();
 
-        let indexer = obj.indexer_from(ast);
+        let indexer = obj.indexer_from(&ast);
 
         assert_eq!(Some(JsonOutput::new("1")), indexer.index("a"));
         assert_eq!(Some(JsonOutput::new("2")), indexer.index("b"));
@@ -64,7 +64,7 @@ mod tests {
     fn index_complex_json() {
         let mut obj = JsonParser::new("{a: [ { b: 1 }, { c : 2 } ] }");
         let     ast = obj.parse().unwrap();
-        let indexer = obj.indexer_from(ast);
+        let indexer = obj.indexer_from(&ast);
 
         assert_eq!(Some(JsonOutput::new("[ { b: 1 }, { c : 2 } ]")), indexer.index("a"));
     }
@@ -73,7 +73,7 @@ mod tests {
     fn index_array_item() {
         let mut array = JsonParser::new("[1,2,3]");
         let       ast = array.parse().unwrap();
-        let   indexer = array.indexer_from(ast);
+        let   indexer = array.indexer_from(&ast);
 
         assert_eq!(Some(JsonOutput::new("1")), indexer.index(0));
         assert_eq!(Some(JsonOutput::new("2")), indexer.index(1));
@@ -85,11 +85,33 @@ mod tests {
     fn index_array_complex_item() {
         let mut array = JsonParser::new("[\n\n\n\n{ a: 1 }, { 'b': 2 }, { \"c\": 3 }\n]");
         let       ast = array.parse().unwrap();
-        let   indexer = array.indexer_from(ast);
+        let   indexer = array.indexer_from(&ast);
 
         assert_eq!(Some(JsonOutput::new("{ a: 1 }"))    , indexer.index(0));
         assert_eq!(Some(JsonOutput::new("{ 'b': 2 }"))  , indexer.index(1));
         assert_eq!(Some(JsonOutput::new("{ \"c\": 3 }")), indexer.index(2));
         assert_eq!(None                                 , indexer.index(3));
+    }
+
+    #[test]
+    fn parse_number_output() {
+        let mut obj = JsonParser::new("{ u8: 255, u16: 65535, u32: 4294967295, u64: 18446744073709551615 }");
+        let       ast = obj.parse().unwrap();
+        let   indexer = obj.indexer_from(&ast);
+
+        assert_eq!(255, indexer.index("u8").unwrap().parse::<u8>().unwrap());
+        assert_eq!(65_535, indexer.index("u16").unwrap().parse::<u16>().unwrap());
+        assert_eq!(4_294_967_295, indexer.index("u32").unwrap().parse::<u32>().unwrap());
+        assert_eq!(18_446_744_073_709_551_615, indexer.index("u64").unwrap().parse::<u64>().unwrap());
+    }
+
+    #[test]
+    fn parse_boolean_output() {
+        let mut obj = JsonParser::new("{ t: true, f: false }");
+        let       ast = obj.parse().unwrap();
+        let   indexer = obj.indexer_from(&ast);
+
+        assert_eq!(true, indexer.index("t").unwrap().parse::<bool>().unwrap());
+        assert_eq!(false, indexer.index("f").unwrap().parse::<bool>().unwrap());
     }
 }

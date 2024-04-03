@@ -8,6 +8,7 @@
 
 - [x] parse token stream into JsonValue tree
 - [x] tracking '[]' and '{}' brackets 
+- [ ] json's object key must be unique
 - [ ] more helpful error message
 - [ ] making parsing run parallel (hard)
 
@@ -17,13 +18,16 @@
     - [x] index object
     - [x] index array
     - [ ] improve index object performance (currently O(n))
+- [ ] allow parse JsonOutput into simple primitive value
+    - [x] parse simple cases
+    - [ ] number has pretty large range of variants, consider support them in future release (ex: 65_535, 2e16, 0x234, 2E, ...)
 - [ ] allow parse ast into struct
 - [ ] support type check on JsonOutput(idea: `fn is<T>(&self) -> bool`)
 
-### Transform & Search
+### Deserialize & Search
 
-- [ ] Parse AST into Struct
-- [ ] Query on AST
+- [ ] Deserialize AST into Struct
+- [ ] Able to query on AST
 
 ### Bug
 

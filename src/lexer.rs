@@ -138,18 +138,6 @@ impl <'a> Tokenizer<'a> {
                     break JsonToken::str(at, self.pos).into()
                 }
             },
-            // identity or keyword
-            b'a'..=b'z' | b'A'..=b'Z' | b'_' => loop {
-                // parse all character wrapped inside single quote
-                // todo: parse once more time because this ident potential to be a keyword (true, false, NaN, ...)
-                let Some(next_item) = self.next_item() else {
-                    break self.parse_keyword(at).into()
-                };
-                if !matches!(next_item, b'a'..=b'z' | b'A'..=b'Z' | b'_') {
-                    self.step_back();
-                    break Some((self.parse_keyword(at), Some(next_item)))
-                }
-            },
             // number
             b'0'..=b'9' => loop {
                 // parse all number include dot(.), exhauted when reaching none digit character
@@ -161,6 +149,19 @@ impl <'a> Tokenizer<'a> {
                     break Some((JsonToken::number(at, self.pos), Some(next_item)));
                 }
             },
+            // identity or keyword
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' => loop {
+                // parse all character wrapped inside single quote
+                // todo: parse once more time because this ident potential to be a keyword (true, false, NaN, ...)
+                let Some(next_item) = self.next_item() else {
+                    break self.parse_keyword(at).into()
+                };
+                if !matches!(next_item, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_') {
+                    self.step_back();
+                    break Some((self.parse_keyword(at), Some(next_item)))
+                }
+            },
+            
             unknown_token => JsonToken::error(format!("doesn't support token: {}", unknown_token), at, self.pos).into()
         }
     }
