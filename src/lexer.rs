@@ -1,6 +1,7 @@
 use std::{marker::PhantomData, ptr};
 use crate::{constant, core::{JsonToken, Span}, error::JsonError};
 
+#[derive(PartialEq, Debug)]
 pub struct Tokenizer<'a> {
     ptr: *const u8,
     pos: usize,
@@ -150,12 +151,11 @@ impl <'a> Tokenizer<'a> {
                 }
             },
             // identity or keyword
-            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' => loop {
-                // parse all character wrapped inside single quote
-                // todo: parse once more time because this ident potential to be a keyword (true, false, NaN, ...)
+            b'a'..=b'z' | b'A'..=b'Z' | b'_' => loop {
                 let Some(next_item) = self.next_item() else {
                     break self.parse_keyword(at).into()
                 };
+                // accept ident has number in their name such as 'u8', 'u16'
                 if !matches!(next_item, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_') {
                     self.step_back();
                     break Some((self.parse_keyword(at), Some(next_item)))

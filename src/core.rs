@@ -1,6 +1,6 @@
-use std::{any::TypeId, str::FromStr};
+use std::str::FromStr;
 
-use crate::{deserialize::Deser, error::JsonError, lexer::Tokenizer, parser::JsonParser};
+use crate::{common::Holder, error::JsonError, lexer::Tokenizer, parser::JsonParser};
 
 #[derive(PartialEq, PartialOrd, Debug)]
 pub enum JsonType {
@@ -144,12 +144,42 @@ impl JsonToken {
     }
 }
 
+
+pub trait JsonQuery {
+    type Out<'out> where Self: 'out;
+    fn query(&self, command: &str) -> Self::Out<'_>;
+}
+
+#[derive(PartialEq, Debug)]
+pub struct JsonOutput<'p> {
+    pub(crate) parser: &'p JsonParser<Tokenizer<'p>>,
+    pub(crate) ast: Holder<'p, JsonValue>,
+}
+
+impl <'p> JsonOutput<'p> {
+    pub fn new(parser: &'p JsonParser<Tokenizer<'p>>, ast: impl Into<Holder<'p, JsonValue>>) -> Self {
+        Self { parser, ast: ast.into(), }
+    }
+
+    #[inline(always)]
+    pub fn parse_type<T: FromStr>(&self) -> Result<T, JsonError> {
+        let span = self.ast.as_ref().get_span();
+        let slice = self.parser.take_slice(span.clone())?;
+        slice.parse::<T>().map_err(|_| JsonError::custom("cannot parse to this type", span))
+    }
+
+    #[inline(always)]
+    pub fn to_raw(&self) -> Result<&str, JsonError> {
+        self.parser.take_slice(self.ast.as_ref().get_span())
+    }
+}
+
 /////////////////////
 pub trait JsonKey {}
 
-#[derive(Default)]
+#[derive(PartialEq, Default, Debug)]
 pub struct JsonStr(pub Span);
-#[derive(Default)]
+#[derive(PartialEq, Default, Debug)]
 pub struct JsonInt(pub usize);
 
 impl JsonKey for JsonStr {}
@@ -163,9 +193,10 @@ impl JsonKey for JsonInt {}
 // **JsonArray**:
 // For given json "[{ id: 1 }, { id: 2 }]", output will be:
 // JsonArray { properties:  }
+#[derive(PartialEq, Debug)]
 pub struct JsonProp<K: JsonKey> {
-    pub key: K,
-    pub value: JsonValue,
+    pub(crate) key: K,
+    pub(crate) value: JsonValue,
 }
 
 impl <K: JsonKey> JsonProp<K> {
@@ -174,8 +205,9 @@ impl <K: JsonKey> JsonProp<K> {
     }
 }
 
+#[derive(PartialEq, Debug)]
 pub struct JsonObject {
-    properties: Vec<JsonProp<JsonStr>>,
+    pub(crate) properties: Vec<JsonProp<JsonStr>>,
     span: Span,
 }
 
@@ -188,8 +220,9 @@ impl JsonObject {
     }
 }
 
+#[derive(PartialEq, Debug)]
 pub struct JsonArray {
-    properties: Vec<JsonProp<JsonInt>>,
+    pub(crate) properties: Vec<JsonProp<JsonInt>>,
     span: Span,
 }
 
@@ -202,6 +235,7 @@ impl JsonArray {
     }
 }
 
+#[derive(PartialEq, Debug)]
 pub enum JsonValue {
     Object(JsonObject),
     Array(JsonArray),
@@ -214,77 +248,6 @@ impl JsonValue {
             Self::Object(JsonObject { span, .. }) => span.clone(),
             Self::Array(JsonArray { span, .. }) => span.clone(),
             Self::Data(_, span) => span.clone(),
-        }
-    }
-}
-
-#[derive(PartialEq, Debug)]
-pub struct JsonOutput<'a> {
-    // span: Span,
-    raw: &'a str,
-}
-
-impl <'a> JsonOutput<'a> {
-    // pub fn new(raw: &'a str, span: Span) -> Self {
-    //     Self { raw, span, }
-    // }
-    pub fn new(raw: &'a str) -> Self {
-        Self { raw }
-    }
-}
-
-impl <'out> JsonOutput<'out> {
-    pub fn parse<T: FromStr>(&self) -> Result<T, JsonError> {
-        self.raw.parse::<T>().map_err(|_| JsonError::custom("not correct type", Span::default()))
-    }
-} 
-
-pub trait JsonIndex {
-    type Output<'out>;
-    fn get_object_key<'obj>(&self, key: &'obj str, indexer: &'obj JsonParser<Tokenizer<'obj>>) -> Self::Output<'obj>;
-    fn get_array_item<'arr>(&self, key: usize, indexer: &'arr JsonParser<Tokenizer<'arr>>) -> Self::Output<'arr>;
-}
-
-impl JsonIndex for JsonValue {
-    type Output<'out> = Option<JsonOutput<'out>>;
-
-    fn get_object_key<'o>(&self, key: &'o str, indexer: &'o JsonParser<Tokenizer<'o>>) -> Self::Output<'o> {
-        match self {
-            Self::Object(obj) => {
-                for prop in obj.properties.iter() {
-                    // warn: skip error here
-                    let Ok(inner_key) = indexer.take_slice(prop.key.0.clone()) else {
-                        return None;
-                    };
-                    if key.eq(inner_key) {
-                        let prop_span = prop.value.get_span();
-                        let Ok(raw) = indexer.take_slice(prop_span) else {
-                            return None;
-                        };
-                        return Some(JsonOutput::new(raw));
-                    }
-                }
-                None
-            },
-            _ => None,
-        }
-    }
-    
-    fn get_array_item<'a>(&self, key: usize, indexer: &'a JsonParser<Tokenizer<'a>>) -> Self::Output<'a> {
-        match self {
-            Self::Array(arr) => {
-                if key >= arr.properties.len() {
-                    return None;
-                }
-                let item = arr.properties.get(key)?;
-                let item_span = item.value.get_span();
-                let Ok(raw) = indexer.take_slice(item_span) else {
-                    return None;
-                };
-                return Some(JsonOutput::new(raw));
-
-            },
-            _ => None,
         }
     }
 }

@@ -1,5 +1,6 @@
-use crate::{core::{JsonArray, JsonInt, JsonObject, JsonProp, JsonStr, JsonToken, JsonType, JsonValue, Punct, Span,}, error::JsonError, indexer::JsonIndexer, lexer::Tokenizer};
+use crate::{core::{JsonArray, JsonInt, JsonObject, JsonOutput, JsonProp, JsonStr, JsonToken, JsonType, JsonValue, Punct, Span}, error::JsonError, lexer::Tokenizer};
 
+#[derive(PartialEq, Debug)]
 pub struct JsonParser<Iter: Iterator<Item = JsonToken>> {
     iter: Iter,
 }
@@ -18,7 +19,7 @@ pub enum JsonState {
     Array,
     ObjProp,
     ArrItem,
-    EOS, // End Of Stream
+    EOS , // End Of Stream
     Error,
 }
 
@@ -29,18 +30,14 @@ impl <'par> JsonParser<Tokenizer<'par>> {
             iter: Tokenizer::from(src),
         }
     }
-
-    pub fn indexer_from(&'par self, ast: &'par JsonValue) -> JsonIndexer<'par> {
-        JsonIndexer::new(self, ast)
-    }
 }
 
 impl <'tk> JsonParser<Tokenizer<'tk>> {
-    pub fn parse(&mut self) -> core::result::Result<JsonValue, JsonError> {
+    pub fn parse(&'tk mut self) -> core::result::Result<JsonOutput, JsonError> {
         while let Some(next_token) = self.iter.next() {
             match next_token {
-                JsonToken::Punct(Punct::OpenCurly, _) => return self.parse_obj(),
-                JsonToken::Punct(Punct::OpenSquare, _) => return self.parse_array(),
+                JsonToken::Punct(Punct::OpenCurly, _) => return self.parse_obj2(),
+                JsonToken::Punct(Punct::OpenSquare, _) => return self.parse_array2(),
                 _ => return Err(JsonError::missing_double_colon(Span::default())),
             };
         };
@@ -80,6 +77,20 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
 }
 
 impl <'tk> JsonParser<Tokenizer<'tk>> {
+        // call this when reaching '{'
+    fn parse_obj2(&'tk mut self) -> Result<JsonOutput<'tk>, JsonError> {
+        let start = self.iter.prev_pos();
+        let mut props = Vec::<JsonProp<JsonStr>>::new();
+        loop {
+            let prop = self.parse_prop()?;
+            if let Some(property) = prop {
+                props.push(property);
+            } else {
+                let ast = JsonValue::Object(JsonObject::new(props, Span::new(start, self.iter.cur_pos())));
+                return Ok(JsonOutput::new(self, ast))
+            }
+        }
+    }
     // call this when reaching '{'
     fn parse_obj(&mut self) -> Result<JsonValue, JsonError> {
         let start = self.iter.prev_pos();
@@ -94,6 +105,21 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
         }
     }
 
+    fn parse_array2(&'tk mut self) -> Result<JsonOutput<'tk>, JsonError> {
+        let start = self.iter.prev_pos();
+        let mut items = Vec::<JsonProp<JsonInt>>::new();
+        let mut pos = 0;
+        loop {
+            let item = self.parse_arr_item(pos)?;
+            if let Some(it) = item {
+                pos += 1;
+                items.push(it);
+            } else {
+                let ast = JsonValue::Array(JsonArray::new(items, Span::new(start, self.iter.cur_pos())));
+                return Ok(JsonOutput::new(self, ast));
+            }
+        }
+    }
     // being call when reaching '['
     fn parse_array(&mut self) -> Result<JsonValue, JsonError> {
         let start = self.iter.prev_pos();
@@ -169,6 +195,22 @@ mod tests {
 
     #[test]
     fn parse_json_array() {
+        let json = "[1,2, { a: 1, b: [1,2,3] }]";
+        let mut arr = JsonParser::new(json);
+
+        let _ = arr.parse().inspect_err(|e| eprintln!("{}", e));
+    }
+
+    #[test]
+    fn parse_json_object2() {
+        let json = "{'a':1 ,'b':2}";
+        let mut obj = JsonParser::new(json);
+
+        let _ = obj.parse().inspect_err(|e| eprintln!("{}", e));
+    }
+
+    #[test]
+    fn parse_json_array2() {
         let json = "[1,2, { a: 1, b: [1,2,3] }]";
         let mut arr = JsonParser::new(json);
 

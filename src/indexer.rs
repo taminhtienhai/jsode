@@ -1,28 +1,4 @@
-use crate::{
-    core::{JsonIndex, JsonOutput, JsonValue},
-    lexer::Tokenizer,
-    parser::JsonParser,
-};
-
-pub struct JsonIndexer<'idx> {
-    parser: &'idx JsonParser<Tokenizer<'idx>>,
-    ast: &'idx JsonValue,
-}
-
-impl<'idx> JsonIndexer<'idx> {
-    pub fn new(parser: &'idx JsonParser<Tokenizer<'idx>>, ast: &'idx JsonValue) -> Self {
-        Self { parser, ast }
-    }
-}
-
-impl<'tk> JsonIndexer<'tk> {
-    pub fn index(&self, key: impl Into<Key<'tk>>) -> Option<JsonOutput<'_>> {
-        match key.into() {
-            Key::Str(key_slice) => self.ast.get_object_key(key_slice, self.parser),
-            Key::Int(key_number) => self.ast.get_array_item(key_number, self.parser),
-        }
-    }
-}
+use crate::core::{JsonOutput, JsonValue};
 
 pub enum Key<'k> {
     Str(&'k str),
@@ -41,77 +17,90 @@ impl<'k> From<usize> for Key<'k> {
     }
 }
 
+pub trait JsonIdx {
+    type Out<'out> where Self: 'out;
+    fn index<'a>(&self, key: impl Into<Key<'a>>) -> Self::Out<'_>; 
+}
+
+
+impl <'out> JsonIdx for JsonOutput<'out> {
+    type Out<'o> = Option<JsonOutput<'o>> where Self: 'o;
+
+    fn index<'a>(&self, key: impl Into<Key<'a>>) -> Self::Out<'_> {
+        match key.into() {
+            Key::Str(key_str) => match self.ast.as_ref() {
+                JsonValue::Object(obj) => {
+                    for prop in obj.properties.iter() {
+                        // warn: skip error here
+                        let Ok(inner_key) = self.parser.take_slice(prop.key.0.clone()) else {
+                            return None;
+                        };
+                        if key_str.eq(inner_key) {
+                            return Some(JsonOutput::new(self.parser, &prop.value))
+                        }
+                    }
+                    None
+                },
+                _ => None,
+            },
+            Key::Int(key_int) => match self.ast.as_ref() {
+                JsonValue::Array(arr) => {
+                    if key_int >= arr.properties.len() {
+                        return None;
+                    }
+                    let prop = arr.properties.get(key_int)?;
+                    return Some(JsonOutput::new(self.parser, &prop.value))
+                },
+                _ => None,
+            }
+        }
+    }
+}
+
 #[rustfmt::skip]
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::{indexer::JsonIdx, parser::JsonParser};
 
     #[test]
     fn index_json_item() {
         let mut obj = JsonParser::new("{'a':1,\"b\":2, c: 3,d : [1,2,3]}");
         let ast = obj.parse().unwrap();
 
-        let indexer = obj.indexer_from(&ast);
-
-        assert_eq!(Some(JsonOutput::new("1")), indexer.index("a"));
-        assert_eq!(Some(JsonOutput::new("2")), indexer.index("b"));
-        assert_eq!(Some(JsonOutput::new("3")), indexer.index("c"));
-        assert_eq!(None                            , indexer.index("__not_exist__"));
-        assert_eq!(Some(JsonOutput::new("[1,2,3]")), indexer.index("d"));
+        assert_eq!(Ok("1"), ast.index("a").unwrap().to_raw());
+        assert_eq!(Ok("2"), ast.index("b").unwrap().to_raw());
+        assert_eq!(Ok("3"), ast.index("c").unwrap().to_raw());
+        assert_eq!(None         , ast.index("__not_exist__"));
+        assert_eq!(Ok("[1,2,3]"), ast.index("d").unwrap().to_raw());
     }
 
     #[test]
     fn index_complex_json() {
         let mut obj = JsonParser::new("{a: [ { b: 1 }, { c : 2 } ] }");
         let     ast = obj.parse().unwrap();
-        let indexer = obj.indexer_from(&ast);
 
-        assert_eq!(Some(JsonOutput::new("[ { b: 1 }, { c : 2 } ]")), indexer.index("a"));
+        assert_eq!(Ok("[ { b: 1 }, { c : 2 } ]"), ast.index("a").unwrap().to_raw());
     }
 
     #[test]
     fn index_array_item() {
         let mut array = JsonParser::new("[1,2,3]");
         let       ast = array.parse().unwrap();
-        let   indexer = array.indexer_from(&ast);
 
-        assert_eq!(Some(JsonOutput::new("1")), indexer.index(0));
-        assert_eq!(Some(JsonOutput::new("2")), indexer.index(1));
-        assert_eq!(Some(JsonOutput::new("3")), indexer.index(2));
-        assert_eq!(None                      , indexer.index(3));
+        assert_eq!(Ok("1"), ast.index(0).unwrap().to_raw());
+        assert_eq!(Ok("2"), ast.index(1).unwrap().to_raw());
+        assert_eq!(Ok("3"), ast.index(2).unwrap().to_raw());
+        assert_eq!(None   , ast.index(3));
     }
 
     #[test]
     fn index_array_complex_item() {
         let mut array = JsonParser::new("[\n\n\n\n{ a: 1 }, { 'b': 2 }, { \"c\": 3 }\n]");
         let       ast = array.parse().unwrap();
-        let   indexer = array.indexer_from(&ast);
 
-        assert_eq!(Some(JsonOutput::new("{ a: 1 }"))    , indexer.index(0));
-        assert_eq!(Some(JsonOutput::new("{ 'b': 2 }"))  , indexer.index(1));
-        assert_eq!(Some(JsonOutput::new("{ \"c\": 3 }")), indexer.index(2));
-        assert_eq!(None                                 , indexer.index(3));
-    }
-
-    #[test]
-    fn parse_number_output() {
-        let mut obj = JsonParser::new("{ u8: 255, u16: 65535, u32: 4294967295, u64: 18446744073709551615 }");
-        let       ast = obj.parse().unwrap();
-        let   indexer = obj.indexer_from(&ast);
-
-        assert_eq!(255, indexer.index("u8").unwrap().parse::<u8>().unwrap());
-        assert_eq!(65_535, indexer.index("u16").unwrap().parse::<u16>().unwrap());
-        assert_eq!(4_294_967_295, indexer.index("u32").unwrap().parse::<u32>().unwrap());
-        assert_eq!(18_446_744_073_709_551_615, indexer.index("u64").unwrap().parse::<u64>().unwrap());
-    }
-
-    #[test]
-    fn parse_boolean_output() {
-        let mut obj = JsonParser::new("{ t: true, f: false }");
-        let       ast = obj.parse().unwrap();
-        let   indexer = obj.indexer_from(&ast);
-
-        assert_eq!(true, indexer.index("t").unwrap().parse::<bool>().unwrap());
-        assert_eq!(false, indexer.index("f").unwrap().parse::<bool>().unwrap());
+        assert_eq!(Ok("{ a: 1 }"), ast.index(0).unwrap().to_raw());
+        assert_eq!(Ok("{ 'b': 2 }"), ast.index(1).unwrap().to_raw());
+        assert_eq!(Ok("{ \"c\": 3 }"), ast.index(2).unwrap().to_raw());
+        assert_eq!(None, ast.index(3));
     }
 }

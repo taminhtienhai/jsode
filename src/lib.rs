@@ -1,6 +1,7 @@
 pub(crate) mod core;
 pub(crate) mod constant;
 pub(crate) mod error;
+pub(crate) mod common;
 
 pub mod deserialize;
 pub mod indexer;

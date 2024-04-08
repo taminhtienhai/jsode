@@ -2,7 +2,7 @@ use core::fmt::Display;
 
 use crate::core::Span;
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub enum ErrorMsg {
     MISSING_SINGLE_COLON,
     MISSING_DOUBLE_COLON,
@@ -11,7 +11,7 @@ pub enum ErrorMsg {
     CUSTOM(String),
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub struct JsonError {
     span: Span,
     msg: ErrorMsg,
