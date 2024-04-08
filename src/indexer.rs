@@ -67,11 +67,11 @@ mod tests {
         let mut obj = JsonParser::new("{'a':1,\"b\":2, c: 3,d : [1,2,3]}");
         let ast = obj.parse().unwrap();
 
-        assert_eq!(Ok("1"), ast.index("a").unwrap().to_raw());
-        assert_eq!(Ok("2"), ast.index("b").unwrap().to_raw());
-        assert_eq!(Ok("3"), ast.index("c").unwrap().to_raw());
+        assert_eq!(Ok("1"), ast.index("a").unwrap().to_slice());
+        assert_eq!(Ok("2"), ast.index("b").unwrap().to_slice());
+        assert_eq!(Ok("3"), ast.index("c").unwrap().to_slice());
         assert_eq!(None         , ast.index("__not_exist__"));
-        assert_eq!(Ok("[1,2,3]"), ast.index("d").unwrap().to_raw());
+        assert_eq!(Ok("[1,2,3]"), ast.index("d").unwrap().to_slice());
     }
 
     #[test]
@@ -79,7 +79,7 @@ mod tests {
         let mut obj = JsonParser::new("{a: [ { b: 1 }, { c : 2 } ] }");
         let     ast = obj.parse().unwrap();
 
-        assert_eq!(Ok("[ { b: 1 }, { c : 2 } ]"), ast.index("a").unwrap().to_raw());
+        assert_eq!(Ok("[ { b: 1 }, { c : 2 } ]"), ast.index("a").unwrap().to_slice());
     }
 
     #[test]
@@ -87,9 +87,9 @@ mod tests {
         let mut array = JsonParser::new("[1,2,3]");
         let       ast = array.parse().unwrap();
 
-        assert_eq!(Ok("1"), ast.index(0).unwrap().to_raw());
-        assert_eq!(Ok("2"), ast.index(1).unwrap().to_raw());
-        assert_eq!(Ok("3"), ast.index(2).unwrap().to_raw());
+        assert_eq!(Ok("1"), ast.index(0).unwrap().to_slice());
+        assert_eq!(Ok("2"), ast.index(1).unwrap().to_slice());
+        assert_eq!(Ok("3"), ast.index(2).unwrap().to_slice());
         assert_eq!(None   , ast.index(3));
     }
 
@@ -98,9 +98,9 @@ mod tests {
         let mut array = JsonParser::new("[\n\n\n\n{ a: 1 }, { 'b': 2 }, { \"c\": 3 }\n]");
         let       ast = array.parse().unwrap();
 
-        assert_eq!(Ok("{ a: 1 }"), ast.index(0).unwrap().to_raw());
-        assert_eq!(Ok("{ 'b': 2 }"), ast.index(1).unwrap().to_raw());
-        assert_eq!(Ok("{ \"c\": 3 }"), ast.index(2).unwrap().to_raw());
+        assert_eq!(Ok("{ a: 1 }"), ast.index(0).unwrap().to_slice());
+        assert_eq!(Ok("{ 'b': 2 }"), ast.index(1).unwrap().to_slice());
+        assert_eq!(Ok("{ \"c\": 3 }"), ast.index(2).unwrap().to_slice());
         assert_eq!(None, ast.index(3));
     }
 }

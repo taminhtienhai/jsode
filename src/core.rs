@@ -161,15 +161,15 @@ impl <'p> JsonOutput<'p> {
         Self { parser, ast: ast.into(), }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn parse_type<T: FromStr>(&self) -> Result<T, JsonError> {
         let span = self.ast.as_ref().get_span();
         let slice = self.parser.take_slice(span.clone())?;
         slice.parse::<T>().map_err(|_| JsonError::custom("cannot parse to this type", span))
     }
 
-    #[inline(always)]
-    pub fn to_raw(&self) -> Result<&str, JsonError> {
+    #[inline]
+    pub fn to_slice(&self) -> Result<&str, JsonError> {
         self.parser.take_slice(self.ast.as_ref().get_span())
     }
 }
