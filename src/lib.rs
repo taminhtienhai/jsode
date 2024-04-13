@@ -9,7 +9,7 @@ pub(crate) mod lexer;
 pub(crate) mod parser;
 
 pub mod prelude {
-    pub use crate::core::{JsonOutput, Span};
+    pub use crate::core::{JsonOutput, Span, Result,};
     pub use crate::error::JsonError;
     pub use crate::parser::JsonParser;
     pub use crate::deserialize::{Deserialize, JsonPsr, JsonVecPsr,};

@@ -13,7 +13,7 @@ struct Color<'c, T> {
 }
 
 #[test]
-fn parse_color() -> Result<(), JsonError> {
+fn parse_color() -> Result<()> {
     let mut color = JsonParser::new("{ red: 9, green: 10, blue: 11 }");
     let mut color_alpha = JsonParser::new("{ red: 9, green: 10, blue: 11, alpha: 1 }");
 
