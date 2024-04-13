@@ -162,7 +162,7 @@ impl <'p> JsonOutput<'p> {
     }
 
     #[inline]
-    pub fn parse_type<T: FromStr>(&self) -> Result<T, JsonError> {
+    pub fn parse_type<T: std::str::FromStr>(&self) -> Result<T, JsonError> {
         let span = self.ast.as_ref().get_span();
         let slice = self.parser.take_slice(span.clone())?;
         slice.parse::<T>().map_err(|_| JsonError::custom("cannot parse to this type", span))
