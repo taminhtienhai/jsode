@@ -1,6 +1,18 @@
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 
+pub(crate) mod common;
+mod derive;
+
+
+#[proc_macro_derive(Deserialize)]
+pub fn deserialize(input: TokenStream) -> TokenStream {
+    match derive::desrialize(input) {
+        Ok(tokens) => tokens,
+        Err(err) => err.to_compile_error(),
+    }.into()
+}
+
 #[proc_macro_attribute]
 pub fn reflection(_attr: TokenStream, src: TokenStream) -> TokenStream {
     let syn::ItemFn { sig, block, attrs, vis } = syn::parse(src).unwrap();
