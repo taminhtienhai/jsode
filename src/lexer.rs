@@ -51,7 +51,7 @@ impl <'a> Tokenizer<'a> {
         unsafe {
             let slice = std::slice::from_raw_parts(self.ptr.add(span.start), span.gap());
             std::str::from_utf8(slice)
-                .map_err(|err| JsonError::custom(err.to_string(), Span::default()))
+                .map_err(|err| JsonError::custom(err.to_string(), span))
         }
     }
 

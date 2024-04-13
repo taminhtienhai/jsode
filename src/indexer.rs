@@ -30,13 +30,9 @@ impl <'out> JsonIdx for JsonOutput<'out> {
         match key.into() {
             Key::Str(key_str) => match self.ast.as_ref() {
                 JsonValue::Object(obj) => {
-                    for prop in obj.properties.iter() {
-                        // warn: skip error here
-                        let Ok(inner_key) = self.parser.take_slice(prop.key.0.clone()) else {
-                            return None;
-                        };
-                        if key_str.eq(inner_key) {
-                            return Some(JsonOutput::new(self.parser, &prop.value))
+                    for (key, value) in obj.properties.iter() {
+                        if key_str.eq(key) {
+                            return Some(JsonOutput::new(self.parser, value))
                         }
                     }
                     None
@@ -102,5 +98,13 @@ mod tests {
         assert_eq!(Ok("{ 'b': 2 }"), ast.index(1).unwrap().to_slice());
         assert_eq!(Ok("{ \"c\": 3 }"), ast.index(2).unwrap().to_slice());
         assert_eq!(None, ast.index(3));
+    }
+
+    #[test]
+    fn index_none_exist_key() {
+        let mut object = JsonParser::new("{ a: 1 }");
+        let        ast = object.parse().unwrap();
+
+        assert_eq!(None, ast.index("b"))
     }
 }

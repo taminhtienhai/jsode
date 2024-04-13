@@ -1,4 +1,5 @@
 use core::fmt::Display;
+use std::fmt::Debug;
 
 use crate::core::Span;
 
@@ -11,10 +12,16 @@ pub enum ErrorMsg {
     CUSTOM(String),
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq)]
 pub struct JsonError {
     span: Span,
     msg: ErrorMsg,
+}
+
+impl Debug for JsonError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JsonError").field("span", &self.span).field("msg", &self.msg).finish()
+    }
 }
 
 #[rustfmt::skip]

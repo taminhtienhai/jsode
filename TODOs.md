@@ -57,7 +57,8 @@
     - [x] support parse Array (Vec<T>, ~~&[T]~~, ..)
     - [ ] support enum (optional)
 - [ ] enhance error message
-- [ ] prefer using HashMap to store key rather than Vec
+- [x] prefer using HashMap to store key rather than Vec
+- [ ] test on real & large json file
 
 ## Road to 0.2
 

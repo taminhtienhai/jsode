@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{collections::HashMap, hash::Hash};
 
 use crate::{common::Holder, error::JsonError, lexer::Tokenizer, parser::JsonParser};
 
@@ -32,7 +32,7 @@ pub enum Punct {
     WhiteSpace ,
 }
 
-#[derive(Default, PartialEq, PartialOrd, Clone, Debug)]
+#[derive(Default, PartialEq, Eq, PartialOrd, Hash, Clone, Debug)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
@@ -142,6 +142,14 @@ impl JsonToken {
             _           => JsonToken::ident(start, end),
         }
     }
+
+    pub fn get_span(&self) -> Span {
+        match self {
+            Self::Data(_, span) => span.clone(),
+            Self::Punct(_, span) => span.clone(),
+            Self::Error(_, span) => span.clone(),
+        }
+    }
 }
 
 
@@ -162,24 +170,24 @@ impl <'p> JsonOutput<'p> {
     }
 
     #[inline]
-    pub fn parse_type<T: std::str::FromStr>(&self) -> Result<T, JsonError> {
+    pub fn parse_type<T: std::str::FromStr>(&self) -> Result<T> {
         let span = self.ast.as_ref().get_span();
         let slice = self.parser.take_slice(span.clone())?;
         slice.parse::<T>().map_err(|_| JsonError::custom("cannot parse to this type", span))
     }
 
     #[inline]
-    pub fn to_slice(&self) -> Result<&str, JsonError> {
+    pub fn to_slice(&self) -> Result<&str> {
         self.parser.take_slice(self.ast.as_ref().get_span())
     }
 }
 
 /////////////////////
-pub trait JsonKey {}
+pub trait JsonKey: Hash {}
 
-#[derive(PartialEq, Default, Debug)]
+#[derive(PartialEq, Eq, Hash, Default, Debug)]
 pub struct JsonStr(pub Span);
-#[derive(PartialEq, Default, Debug)]
+#[derive(PartialEq, Hash, Default, Debug)]
 pub struct JsonInt(pub usize);
 
 impl JsonKey for JsonStr {}
@@ -207,12 +215,12 @@ impl <K: JsonKey> JsonProp<K> {
 
 #[derive(PartialEq, Debug)]
 pub struct JsonObject {
-    pub(crate) properties: Vec<JsonProp<JsonStr>>,
+    pub(crate) properties: HashMap<String, JsonValue>,
     span: Span,
 }
 
 impl JsonObject {
-    pub fn new(properties: Vec<JsonProp<JsonStr>>, span: Span) -> Self {
+    pub fn new(properties: HashMap<String, JsonValue>, span: Span) -> Self {
         Self {
             properties,
             span,
@@ -251,3 +259,5 @@ impl JsonValue {
         }
     }
 }
+
+pub type Result<T> = core::result::Result<T, JsonError>;

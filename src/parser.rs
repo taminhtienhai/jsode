@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{core::{JsonArray, JsonInt, JsonObject, JsonOutput, JsonProp, JsonStr, JsonToken, JsonType, JsonValue, Punct, Span}, error::JsonError, lexer::Tokenizer};
 
 #[derive(PartialEq, Debug)]
@@ -11,16 +13,6 @@ impl <'tk> From<Tokenizer<'tk>> for JsonParser<Tokenizer<'tk>> {
             iter: value,
         }
     }
-}
-
-pub enum JsonState {
-    Idle,
-    Object,
-    Array,
-    ObjProp,
-    ArrItem,
-    EOS , // End Of Stream
-    Error,
 }
 
 impl <'par> JsonParser<Tokenizer<'par>> {
@@ -38,7 +30,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
             match next_token {
                 JsonToken::Punct(Punct::OpenCurly, _) => return self.parse_obj2(),
                 JsonToken::Punct(Punct::OpenSquare, _) => return self.parse_array2(),
-                _ => return Err(JsonError::missing_double_colon(Span::default())),
+                _ => return Err(JsonError::missing_double_colon(next_token.get_span())),
             };
         };
         Err(JsonError::missing_double_colon(Span::default()))
@@ -80,11 +72,15 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
         // call this when reaching '{'
     fn parse_obj2(&'tk mut self) -> Result<JsonOutput<'tk>, JsonError> {
         let start = self.iter.prev_pos();
-        let mut props = Vec::<JsonProp<JsonStr>>::new();
+        let mut props = HashMap::<String, JsonValue>::new();
         loop {
             let prop = self.parse_prop()?;
-            if let Some(property) = prop {
-                props.push(property);
+            if let Some(JsonProp { key, value }) = prop {
+                let key_slice = self.take_slice(key.0.clone())?;
+                if props.contains_key(key_slice) {
+                    return Err(JsonError::custom(format!("already exist key {key_slice}"), key.0))
+                }
+                props.insert(key_slice.to_string(), value);
             } else {
                 let ast = JsonValue::Object(JsonObject::new(props, Span::new(start, self.iter.cur_pos())));
                 return Ok(JsonOutput::new(self, ast))
@@ -94,11 +90,15 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
     // call this when reaching '{'
     fn parse_obj(&mut self) -> Result<JsonValue, JsonError> {
         let start = self.iter.prev_pos();
-        let mut props = Vec::<JsonProp<JsonStr>>::new();
+        let mut props = HashMap::<String, JsonValue>::new();
         loop {
             let prop = self.parse_prop()?;
-            if let Some(property) = prop {
-                props.push(property);
+            if let Some(JsonProp { key, value }) = prop {
+                let key_slice = self.take_slice(key.0.clone())?;
+                if props.contains_key(key_slice) {
+                    return Err(JsonError::custom(format!("already exist key {key_slice}"), key.0))
+                }
+                props.insert(key_slice.to_string(), value);
             } else {
                 return Ok(JsonValue::Object(JsonObject::new(props, Span::new(start, self.iter.cur_pos()))))
             }
@@ -156,15 +156,15 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
             Some(JsonToken::Data(JsonType::Ident, span)) => span,
             Some(JsonToken::Punct(Punct::CloseCurly, _)) => return Ok(None),
             Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(err, span)),
+            Some(tk) => return Err(JsonError::custom("[parse_prop] unexpected token when parsing key", tk.get_span())),
             None => return Err(JsonError::custom("[parse_prop] `key` should not be None", Span::default())),
-            _ => return Err(JsonError::custom("[parse_prop] unexpected token when parsing key", Span::default())),
         };
 
         let _colon = match self.next_token() {
             Some(JsonToken::Punct(Punct::Colon, cspan)) => cspan,
             Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(err, span)),
+            Some(tk) => return Err(JsonError::custom("[parse_prop] unexpected token when parsing `colon`", tk.get_span())),
             None => return Err(JsonError::custom("[parse_prop] `colon` should not be None", Span::default())),
-            _ => return Err(JsonError::custom("[parse_prop] unexpected token when parsing `colon`", Span::default()))
         };
 
         let value = match self.next_token() {
@@ -172,7 +172,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
             Some(JsonToken::Punct(Punct::OpenSquare, _)) => self.parse_array()?,
             Some(JsonToken::Data(data, data_span)) => JsonValue::Data(data, data_span),
             Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(err, span)),
-            Some(_) => return Err(JsonError::custom("[parse_prop] not able to parse this token", Span::default())), 
+            Some(tk) =>  return Err(JsonError::custom("[parse_prop] not able to parse this token", tk.get_span())),
             None => return Err(JsonError::custom("[parse_prop] parsing prop value but reaching None", Span::default())),
         };
 
@@ -215,5 +215,31 @@ mod tests {
         let mut arr = JsonParser::new(json);
 
         let _ = arr.parse().inspect_err(|e| eprintln!("{}", e));
+    }
+
+    // UnHappy Cases
+
+    #[test]
+    fn json_key_not_valid() {
+        let mut arr = JsonParser::new("{ $dolar: 1 }");
+
+        let err = arr.parse().unwrap_err();
+
+        println!("{err}");
+        println!("{err:?}");
+    }
+
+    #[test]
+    fn duplicate_key() {
+        let mut obj = JsonParser::new(
+        r#"{
+            a: 1,
+            a: 2
+        }"#
+        );
+        let err = obj.parse().unwrap_err();
+
+        println!("{err}");
+        println!("{err:?}");
     }
 }
