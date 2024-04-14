@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{core::{JsonArray, JsonInt, JsonObject, JsonOutput, JsonProp, JsonStr, JsonToken, JsonType, JsonValue, Punct, Span}, error::JsonError, lexer::Tokenizer};
+use crate::{constant::msg, core::{JsonArray, JsonInt, JsonObject, JsonOutput, JsonProp, JsonStr, JsonToken, JsonType, JsonValue, Punct, Span}, error::JsonError, lexer::Tokenizer};
 
 #[derive(PartialEq, Debug)]
 pub struct JsonParser<Iter: Iterator<Item = JsonToken>> {
@@ -78,7 +78,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
             if let Some(JsonProp { key, value }) = prop {
                 let key_slice = self.take_slice(key.0.clone())?;
                 if props.contains_key(key_slice) {
-                    return Err(JsonError::custom(format!("already exist key {key_slice}"), key.0))
+                    return Err(JsonError::custom(format!("{} `{}`", msg::DUPLICATE_KEY, key_slice), key.0))
                 }
                 props.insert(key_slice.to_string(), value);
             } else {
@@ -96,7 +96,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
             if let Some(JsonProp { key, value }) = prop {
                 let key_slice = self.take_slice(key.0.clone())?;
                 if props.contains_key(key_slice) {
-                    return Err(JsonError::custom(format!("already exist key {key_slice}"), key.0))
+                    return Err(JsonError::custom(format!("{} `{}`", msg::DUPLICATE_KEY, key_slice), key.0))
                 }
                 props.insert(key_slice.to_string(), value);
             } else {

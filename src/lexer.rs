@@ -55,6 +55,7 @@ impl <'a> Tokenizer<'a> {
         }
     }
 
+    #[inline]
     fn next_item(&mut self) -> Option<u8> {
         if self.pos >= self.size {
             None
@@ -162,7 +163,7 @@ impl <'a> Tokenizer<'a> {
                 }
             },
             
-            unknown_token => JsonToken::error(format!("doesn't support token: {}", unknown_token), at, self.pos).into()
+            unknown_token => JsonToken::error(format!("{} {}", constant::msg::NOT_SUPPORT_TOKEN, unknown_token), at, self.pos).into()
         }
     }
 }

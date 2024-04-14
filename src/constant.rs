@@ -2,7 +2,10 @@
 pub(crate) mod msg {
     pub const MISSING_SINGLE_COLON: &str = "missing string's close character \'";
     pub const MISSING_DOUBLE_COLON: &str = "missing string's close character \"";
-    // pub const UNEXPECTED_EOS: &str = "current token haven't parsed completely but EOS";
+    pub const NOT_SUPPORT_TOKEN:    &str = "not support this token";
+    pub const EMPTY_JSON:           &str = "json input is empty";
+    pub const INVALID_ARRAY:        &str = "not allow this token when parsing array";
+    pub const DUPLICATE_KEY:        &str = "already exist key";
 }
 
 pub(crate) mod ascii {

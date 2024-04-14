@@ -44,7 +44,10 @@
 
 ## Issues
 
-- [ ] convert `Option<Result<u8,JsonError>>` -> `Result<Option<u8>,JsonError>`
+- [x] convert `Option<Result<u8,JsonError>>` -> `Result<Option<u8>,JsonError>`
+- [ ] revamp error leverage derive macro
+- [ ] rename this crate
+- [ ] test on real & large json file
 
 ## Road to 0.1
 
@@ -56,12 +59,14 @@
     - ~~[ ] support tuple struct~~ (impossible because tuple don't have keys)
     - [x] support parse Array (Vec<T>, ~~&[T]~~, ..)
     - [ ] support enum (optional)
-- [ ] enhance error message
 - [x] prefer using HashMap to store key rather than Vec
-- [ ] test on real & large json file
+- [ ] enhance error message
 
 ## Road to 0.2
 
+- [ ] row/col tracking
 - [ ] support query
 - [ ] support Defer<'_, u8> property
     - postpone parsing value as late as possible
+
+
