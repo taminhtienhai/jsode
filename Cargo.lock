@@ -3,14 +3,14 @@
 version = 3
 
 [[package]]
-name = "json-parser"
+name = "jsode"
 version = "0.1.0"
 dependencies = [
- "json_parser_macro",
+ "jsode_macro",
 ]
 
 [[package]]
-name = "json_parser_macro"
+name = "jsode_macro"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",

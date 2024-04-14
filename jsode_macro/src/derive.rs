@@ -6,8 +6,8 @@ pub fn desrialize(tokens: TokenStream) -> syn::Result<proc_macro2::TokenStream> 
     let method_impl = crate::common::parse_body(data)?;
 
     Ok(quote::quote! {
-        impl #generics json_parser::prelude::Deserialize for #ident #generics {
-            fn parse(out: &json_parser::prelude::JsonOutput<'_>) -> Result<Self> {
+        impl #generics jsode::prelude::Deserialize for #ident #generics {
+            fn parse(out: &jsode::prelude::JsonOutput<'_>) -> Result<Self> {
                 #method_impl
             }
         }

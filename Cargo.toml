@@ -1,7 +1,7 @@
-workspace = { members = ["json_parser_macro"] }
+workspace = { members = ["jsode_macro"] }
 
 [package]
-name = "json-parser"
+name = "jsode"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,4 +11,4 @@ never_loop = "allow"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-json_parser_macro = { path = "./json_parser_macro" }
+jsode_macro = { path = "./jsode_macro" }

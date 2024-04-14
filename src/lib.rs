@@ -15,7 +15,7 @@ pub mod prelude {
     pub use crate::deserialize::{Deserialize, JsonPsr, JsonVecPsr,};
     pub use crate::indexer::JsonIdx;
     // reexport macro
-    pub use json_parser_macro::Deserialize;
+    pub use jsode_macro::Deserialize;
 }
 
 

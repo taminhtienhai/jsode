@@ -45,8 +45,8 @@
 ## Issues
 
 - [x] convert `Option<Result<u8,JsonError>>` -> `Result<Option<u8>,JsonError>`
+- [x] rename this crate
 - [ ] revamp error leverage derive macro
-- [ ] rename this crate
 - [ ] test on real & large json file
 
 ## Road to 0.1
@@ -60,13 +60,17 @@
     - [x] support parse Array (Vec<T>, ~~&[T]~~, ..)
     - [ ] support enum (optional)
 - [x] prefer using HashMap to store key rather than Vec
-- [ ] enhance error message
+
 
 ## Road to 0.2
 
+- [ ] enhance error message
 - [ ] row/col tracking
 - [ ] support query
 - [ ] support Defer<'_, u8> property
     - postpone parsing value as late as possible
+- [ ] accept file as argument (mmap) 
 
+## Road to 0.3
 
+- [ ] support `no_std`

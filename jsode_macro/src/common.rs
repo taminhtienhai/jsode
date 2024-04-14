@@ -89,14 +89,14 @@ impl ToTokens for StructType {
                 for BodyProp { name, ty } in props {
                     let item = match check_type(ty) {
                         FieldType::Primitive => quote::quote! {
-                            #name: json_parser::prelude::JsonPsr::parse_into::<#ty>(
-                                &json_parser::prelude::JsonIdx::index(out, stringify!(#name))
-                                .ok_or_else(|| json_parser::prelude::JsonError::empty_json(json_parser::prelude::Span::default()))?
+                            #name: jsode::prelude::JsonPsr::parse_into::<#ty>(
+                                &jsode::prelude::JsonIdx::index(out, stringify!(#name))
+                                .ok_or_else(|| jsode::prelude::JsonError::empty_json(jsode::prelude::Span::default()))?
                             )?,
                         },
                         FieldType::Option(inner_type) => quote::quote! {
-                            #name: json_parser::prelude::JsonIdx::index(out, stringify!(#name))
-                                .map(|x| json_parser::prelude::JsonPsr::parse_into::<#inner_type>(&x))
+                            #name: jsode::prelude::JsonIdx::index(out, stringify!(#name))
+                                .map(|x| jsode::prelude::JsonPsr::parse_into::<#inner_type>(&x))
                                 .map_or(Ok(None), |x| x.map(Some))?,
                         },
                         FieldType::Phantom => quote::quote! {

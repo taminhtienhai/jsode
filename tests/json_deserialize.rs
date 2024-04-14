@@ -1,7 +1,6 @@
 use std::marker::PhantomData;
 
-use json_parser_macro::Deserialize;
-use json_parser::prelude::*;
+use jsode::prelude::*;
 
 #[derive(Deserialize, PartialEq, Debug)]
 struct Color<'c, T> {
