@@ -29,14 +29,9 @@ impl <'out> JsonIdx for JsonOutput<'out> {
     fn index<'a>(&self, key: impl Into<Key<'a>>) -> Self::Out<'_> {
         match key.into() {
             Key::Str(key_str) => match self.ast.as_ref() {
-                JsonValue::Object(obj) => {
-                    for (key, value) in obj.properties.iter() {
-                        if key_str.eq(key) {
-                            return Some(JsonOutput::new(self.parser, value))
-                        }
-                    }
-                    None
-                },
+                JsonValue::Object(obj) => obj.properties
+                    .get(key_str)
+                    .map(|value| JsonOutput::new(self.parser, value)),
                 _ => None,
             },
             Key::Int(key_int) => match self.ast.as_ref() {
@@ -44,8 +39,9 @@ impl <'out> JsonIdx for JsonOutput<'out> {
                     if key_int >= arr.properties.len() {
                         return None;
                     }
-                    let prop = arr.properties.get(key_int)?;
-                    return Some(JsonOutput::new(self.parser, &prop.value))
+                    return arr.properties
+                        .get(key_int)
+                        .map(|prop| JsonOutput::new(self.parser, &prop.value))
                 },
                 _ => None,
             }
