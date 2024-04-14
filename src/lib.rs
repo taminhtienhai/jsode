@@ -18,6 +18,12 @@ pub mod prelude {
     pub use jsode_macro::Deserialize;
 }
 
+pub use crate::core::{JsonOutput, Span, Result,};
+pub use crate::error::JsonError;
+pub use crate::parser::JsonParser;
+pub use crate::deserialize::{Deserialize, JsonPsr,};
+pub use crate::indexer::JsonIdx;
+
 
 #[macro_use]
 pub mod _macro;
