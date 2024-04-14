@@ -91,7 +91,7 @@ impl ToTokens for StructType {
                         FieldType::Primitive => quote::quote! {
                             #name: jsode::prelude::JsonPsr::parse_into::<#ty>(
                                 &jsode::prelude::JsonIdx::index(out, stringify!(#name))
-                                .ok_or_else(|| jsode::prelude::JsonError::empty_json(jsode::prelude::Span::default()))?
+                                .ok_or_else(|| jsode::prelude::JsonError::custom(format!("key not found: `{}`", stringify!(#name)), jsode::prelude::Span::default()))?
                             )?,
                         },
                         FieldType::Option(inner_type) => quote::quote! {
