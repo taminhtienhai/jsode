@@ -28,14 +28,15 @@
 
 ## Road to 0.2
 
+- [ ] allow custom key via `#[property($prop_name)]` inside `Deserialize` macro
+- [ ] support pattern query
+- [ ] support `Lazy<'l, T: Deserialize>` struct, benefit you to execute operator like eq(==), le(<), gt(>), gte(>=) on value without derialize it 
 - [ ] `Serialize` macro
 - [ ] enhance error message
     - [ ] Diagnostic struct (visualize location of error on input source)
 - [ ] row & column tracking
-- [ ] support query
-- [ ] support Defer<'_, u8> property
-    - postpone parsing value as late as possible
-- [ ] accept file as argument (mmap)
+- [ ] accept file as argument
+    - [ ] support memory mapping via [`memmap2`](https://crates.io/crates/memmap2) crate (optional)
 - [ ] impl Deserialize on more type
     - [ ] `&[T]`
     - [ ] `HashMap<String, T>`
@@ -48,5 +49,5 @@
 
 ## Road to 1.0
 
-- [ ] parallel parsing
+- [ ] support parallel parsing
 - [ ] separate `safe` & `unsafe` feature

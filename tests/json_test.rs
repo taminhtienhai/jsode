@@ -35,9 +35,8 @@ fn sample2() -> Result<()> {
         phoneNumbers: Vec<Phone>,
     }
     let mut json = JsonParser::new(include_str!("../resources/valid/sample2.json"));
-    let out = json.parse()?;
 
-    let Sample2 { firstName, address, phoneNumbers, ..} = out.parse_into::<Sample2>().unwrap();
+    let Sample2 { firstName, address, phoneNumbers, ..} = json.parse()?.parse_into::<Sample2>().unwrap();
 
     assert_eq!("Joe", firstName);
     assert_eq!(Address {
