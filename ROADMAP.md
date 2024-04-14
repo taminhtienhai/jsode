@@ -8,11 +8,13 @@
 
 - [x] convert `Option<Result<u8,JsonError>>` -> `Result<Option<u8>,JsonError>`
 - [x] rename this crate
+- [ ] support `impl_deserialize` macro_rules, generate `iml Deserialize` trait on input types
 - [ ] write document
 - [ ] bring some usecases/examples
 - [ ] apply github CI/CD
 - [ ] revamp error leverage derive macro
 - [ ] test on real & large json file
+- [ ] add benchmark
 
 ## Road to 0.1
 
@@ -30,22 +32,22 @@
 
 - [ ] allow custom key via `#[property($prop_name)]` inside `Deserialize` macro
 - [ ] support pattern query
-- [ ] support `Lazy<'l, T: Deserialize>` struct, benefit you to execute operator like eq(==), le(<), gt(>), gte(>=) on value without derialize it 
-- [ ] `Serialize` macro
+- [ ] row & column tracking
+- [ ] support `Lazy<'l, T: Deserialize>` struct, benefit you to execute operator like eq(==), le(<), gt(>), gte(>=) on value without derialize it
 - [ ] enhance error message
     - [ ] Diagnostic struct (visualize location of error on input source)
-- [ ] row & column tracking
-- [ ] accept file as argument
-    - [ ] support memory mapping via [`memmap2`](https://crates.io/crates/memmap2) crate (optional)
 - [ ] impl Deserialize on more type
     - [ ] `&[T]`
     - [ ] `HashMap<String, T>`
 
 ## Road to 0.3
 
+- [ ] support `Serialize` macro (multi targets)
 - [ ] support `no_std`
-- [ ] support compile-time validation macro
 - [ ] support better number variants parsing (ex: 65_535, 2e16, 0x234, 2E, ...)
+- [ ] support compile-time validation macro
+- [ ] accept file as argument
+    - [ ] support memory mapping via [`memmap2`](https://crates.io/crates/memmap2) crate (optional)
 
 ## Road to 1.0
 
