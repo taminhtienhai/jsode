@@ -6,14 +6,14 @@ Easy parsing JSON source and transform it into interaction Rust type.
 
 ### Getting Started
 
-1. Install
+#### 1. Install
 
 ```toml
 [dependencies]
 jsode = { version = "0.1" }
 ```
 
-2. Parsing AST
+#### 2. Parsing AST
 
 ```rust
 use jsode::prelude::*;
@@ -21,7 +21,7 @@ use jsode::prelude::*;
 // `jsonde::Result` already imported via prelude mod, so you only need to write `-> Result<()>`.
 // I just wrote down it's full path to make sure you don't value it as `std::result::Result`.
 fn main() -> jsode::Result<()> {
-    let src = JsonParser::new("{ 'hello': 'world' }")
+    let mut src = JsonParser::new("{ 'hello': 'world' }");
 
     assert!(src.parse().is_ok());
 
@@ -29,13 +29,13 @@ fn main() -> jsode::Result<()> {
 }
 ```
 
-3. Index json key
+#### 3. Index json key
 
 ```rust
 use jsode::prelude::*;
 
 fn main() -> jsode::Result<()> {
-    let src = JsonParser::new("{ 'hello': 'world' }")
+    let mut src = JsonParser::new("{ 'hello': 'world' }");
     let ast = src.parse()?;
 
     assert!(ast.index("hello").is_some());
@@ -45,27 +45,27 @@ fn main() -> jsode::Result<()> {
 }
 ```
 
-4. Getting/Deserialize json's property
+#### 4. Getting/Deserialize json's property
 
 ```rust
 use jsode::prelude::*;
 
 fn main() -> jsode::Result<()> {
-    let src = JsonParser::new("{ 'hello': 'world' }")
+    let mut src = JsonParser::new("{ 'hello': 'world' }");
     let ast = src.parse()?;
 
-    assert_eq!(Some("world"), ast.index("hello").parse_into::<String>()?);
+    assert_eq!("world", ast.index("hello").unwrap().parse_into::<String>()?);
 
     Ok(())
 }
 ```
 
-5. Deserialize into Rust struct
+#### 5. Deserialize into Rust struct
 
 ```rust
 use jsode::prelude::*;
 
-#[Deserialize, PartialEq, Debug]
+#[derive(Deserialize, PartialEq, Debug)]
 struct Color {
     #[prop = "r"]
     red: u8,
@@ -75,7 +75,7 @@ struct Color {
 }
 
 fn main() -> jsode::Result<()> {
-    let src = JsonParser::new(r#"{
+    let mut src = JsonParser::new(r#"{
         'r': 255,
         'b': 96,
         'green': 0,
@@ -87,7 +87,7 @@ fn main() -> jsode::Result<()> {
         blue: 96,
         green: 0,
     };
-    assert_eq!(Ok(expected), ast.parse_into::<Color>()?);
+    assert_eq!(expected, ast.parse_into::<Color>()?);
 
     Ok(())
 }
