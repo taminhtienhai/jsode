@@ -11,13 +11,14 @@ pub fn parse_body(body: Data) -> syn::Result<impl ToTokens> {
 
 
 pub struct BodyProp {
+    attrs: Vec<syn::Attribute>,
     name: Option<syn::Ident>,
     ty: syn::Type,
 }
 
 impl BodyProp {
-    pub fn new(name: Option<syn::Ident>, ty: syn::Type) -> Self {
-        Self { name, ty, }
+    pub fn new(name: Option<syn::Ident>, ty: syn::Type, attrs: Vec<syn::Attribute>) -> Self {
+        Self { name, ty, attrs, }
     }
 }
 
@@ -86,16 +87,18 @@ impl ToTokens for StructType {
         let result = match self {
             Self::Struct(StructBody { props }) => {
                 let mut constructor = proc_macro2::TokenStream::new();
-                for BodyProp { name, ty } in props {
+                for BodyProp { name, ty, attrs } in props {
+                    let prop_index = private::extract_prop_meta(attrs)
+                        .or_else(|| Some(private::convert_to_list_str(name.as_ref().unwrap())));
                     let item = match check_type(ty) {
                         FieldType::Primitive => quote::quote! {
                             #name: jsode::prelude::JsonPsr::parse_into::<#ty>(
-                                &jsode::prelude::JsonIdx::index(out, stringify!(#name))
-                                .ok_or_else(|| jsode::prelude::JsonError::custom(format!("key not found: `{}`", stringify!(#name)), jsode::prelude::Span::default()))?
+                                &jsode::prelude::JsonIdx::index(out, #prop_index)
+                                .ok_or_else(|| jsode::prelude::JsonError::custom(format!("key not found: `{}`", #prop_index), jsode::prelude::Span::default()))?
                             )?,
                         },
                         FieldType::Option(inner_type) => quote::quote! {
-                            #name: jsode::prelude::JsonIdx::index(out, stringify!(#name))
+                            #name: jsode::prelude::JsonIdx::index(out, #prop_index)
                                 .map(|x| jsode::prelude::JsonPsr::parse_into::<#inner_type>(&x))
                                 .map_or(Ok(None), |x| x.map(Some))?,
                         },
@@ -121,7 +124,7 @@ impl ToTokens for StructType {
 mod private {
     use proc_macro2::Span;
     use quote::ToTokens;
-    use syn::{DataEnum, DataStruct};
+    use syn::DataStruct;
     use super::StructType;
 
     use crate::common::{StructBody, BodyProp};
@@ -137,19 +140,34 @@ mod private {
 
     fn parse_struct_named(syn::FieldsNamed { named, .. }: syn::FieldsNamed) -> StructType {
         let props = named.into_iter()
-                .map(|syn::Field { ident, ty, .. }| BodyProp::new(ident, ty))
+                .map(|syn::Field { ident, ty, attrs, .. }| BodyProp::new(ident, ty, attrs))
                 .collect::<Vec<_>>();
         StructType::Struct(StructBody { props })
     }
 
     fn parse_struct_unnamed( syn::FieldsUnnamed { unnamed, .. }: syn::FieldsUnnamed) -> StructType {
         let props = unnamed.into_iter()
-                .map(|syn::Field { ident, ty, .. }| BodyProp::new(ident, ty))
+                .map(|syn::Field { ident, ty, attrs,.. }| BodyProp::new(ident, ty, attrs))
                 .collect::<Vec<_>>();
         StructType::Tuple(StructBody { props })
     }
 
-    pub fn parse_enum_body(DataEnum { variants, .. }: DataEnum) -> impl ToTokens {
-        quote::quote!()
+    pub fn extract_prop_meta(attrs: &Vec<syn::Attribute>) -> Option<syn::LitStr> {
+        for syn::Attribute { meta, .. } in attrs {
+            match meta {
+                syn::Meta::NameValue(syn::MetaNameValue { value: syn::Expr::Lit(syn::ExprLit { lit, .. }), .. }) => if let syn::Lit::Str(lit_str) = lit {
+                    return Some(lit_str.clone());
+                } else {
+                    continue;
+                },
+                _ => continue,
+            };
+        }
+        None
+    }
+
+    pub fn convert_to_list_str(ident: &syn::Ident) -> syn::LitStr {
+        let ident_str = ident.to_string();
+        syn::LitStr::new(&ident_str, ident.span())
     }
 }

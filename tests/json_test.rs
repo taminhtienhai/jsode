@@ -22,7 +22,8 @@ fn sample2() -> Result<()> {
     }
     #[derive(Deserialize, PartialEq, Debug)]
     struct Phone {
-        _type: String,
+        #[prop = "type"]
+        ty: String,
         number: String,
     }
     #[derive(Deserialize)]
@@ -45,7 +46,7 @@ fn sample2() -> Result<()> {
         state: "CA".to_string(),
     }, address);
     assert_eq!(vec![
-        Phone {_type: "home".to_string(), number: "7349282382".to_string()}
+        Phone {ty: "home".to_string(), number: "7349282382".to_string()}
     ], phoneNumbers);
     Ok(())
 }

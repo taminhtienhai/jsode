@@ -9,6 +9,6 @@
        "state": "CA"
    },
    "phoneNumbers": [
-       { "_type": "home", "number": "7349282382" }
+       { "type": "home", "number": "7349282382" }
    ]
 }
