@@ -26,13 +26,14 @@
     - [x] support parse Array (Vec<T>, ~~&[T]~~, ..)
     - ~~[ ] support tuple struct~~ (impossible because tuple don't have keys, tuple layout also look more like a array)
 - [x] prefer using HashMap to store key rather than Vec
-- [x] allow custom key `#[prop($prop_name)]` inside `Deserialize` macro
+- [x] support property `#[prop = $prop_name]` for field mapping
 
 ## Road to 0.2
 
 - [ ] support pattern query
 - [ ] row & column tracking
 - [ ] support `Lazy<'l, T: Deserialize>` struct, benefit you to execute operator like eq(==), le(<), gt(>), gte(>=) on value without derialize it
+- [ ] support property `#[msg = $err_msg]` for custom error message
 - [ ] enhance error message
     - [ ] Diagnostic struct (visualize location of error on input source)
 - [ ] impl Deserialize on more type
