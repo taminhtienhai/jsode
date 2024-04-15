@@ -67,16 +67,18 @@ use jsode::prelude::*;
 
 #[Deserialize, PartialEq, Debug]
 struct Color {
+    #[prop = "r"]
     red: u8,
-    green: u8,
+    #[prop = "b"]
     blue: u8,
+    green: u8,
 }
 
 fn main() -> jsode::Result<()> {
     let src = JsonParser::new(r#"{
-        'red': 255,
-        'blue': 96,
-        'green': 0
+        'r': 255,
+        'b': 96,
+        'green': 0,
     }"#);
     let ast = src.parse()?;
 

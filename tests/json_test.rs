@@ -16,7 +16,8 @@ fn sample1() -> Result<()> {
 fn sample2() -> Result<()> {
     #[derive(Deserialize, PartialEq, Debug)]
     struct Address {
-        streetAddress: String,
+        #[prop = "streetAddress"]
+        street_address: String,
         city: String,
         state: String,
     }
@@ -28,26 +29,29 @@ fn sample2() -> Result<()> {
     }
     #[derive(Deserialize)]
     struct Sample2 {
-        firstName: String,
-        lastName: String,
+        #[prop = "firstName"]
+        first_name: String,
+        #[prop = "lastName"]
+        last_name: String,
         gender: String,
         age: u8,
         address: Address,
-        phoneNumbers: Vec<Phone>,
+        #[prop = "phoneNumbers"]
+        phone_numbers: Vec<Phone>,
     }
     let mut json = JsonParser::new(include_str!("../resources/valid/sample2.json"));
 
-    let Sample2 { firstName, address, phoneNumbers, ..} = json.parse()?.parse_into::<Sample2>().unwrap();
+    let Sample2 { first_name, address, phone_numbers, ..} = json.parse()?.parse_into::<Sample2>().unwrap();
 
-    assert_eq!("Joe", firstName);
+    assert_eq!("Joe", first_name);
     assert_eq!(Address {
-        streetAddress: "101".to_string(),
+        street_address: "101".to_string(),
         city: "San Diego".to_string(),
         state: "CA".to_string(),
     }, address);
     assert_eq!(vec![
         Phone {ty: "home".to_string(), number: "7349282382".to_string()}
-    ], phoneNumbers);
+    ], phone_numbers);
     Ok(())
 }
 
