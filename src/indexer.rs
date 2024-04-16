@@ -1,4 +1,4 @@
-use crate::core::{JsonOutput, JsonValue};
+use crate::{common, core::{JsonOutput, JsonProp, JsonValue}};
 
 pub enum Key<'k> {
     Str(&'k str),
@@ -30,8 +30,8 @@ impl <'out> JsonIdx for JsonOutput<'out> {
         match key.into() {
             Key::Str(key_str) => match self.ast.as_ref() {
                 JsonValue::Object(obj) => obj.properties
-                    .get(key_str)
-                    .map(|value| JsonOutput::new(self.parser, value)),
+                    .get(&common::hash_str(key_str))
+                    .map(|JsonProp { value, .. }| JsonOutput::new(self.parser, value)),
                 _ => None,
             },
             Key::Int(key_int) => match self.ast.as_ref() {

@@ -215,12 +215,12 @@ impl <K: JsonKey> JsonProp<K> {
 
 #[derive(PartialEq, Debug)]
 pub struct JsonObject {
-    pub(crate) properties: HashMap<String, JsonValue>,
+    pub(crate) properties: HashMap<u64, JsonProp<JsonStr>>,
     span: Span,
 }
 
 impl JsonObject {
-    pub fn new(properties: HashMap<String, JsonValue>, span: Span) -> Self {
+    pub fn new(properties: HashMap<u64, JsonProp<JsonStr>>, span: Span) -> Self {
         Self {
             properties,
             span,

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{constant::msg, core::{JsonArray, JsonInt, JsonObject, JsonOutput, JsonProp, JsonStr, JsonToken, JsonType, JsonValue, Punct, Span}, error::JsonError, lexer::Tokenizer};
+use crate::{common, constant::msg, core::{JsonArray, JsonInt, JsonObject, JsonOutput, JsonProp, JsonStr, JsonToken, JsonType, JsonValue, Punct, Span}, error::JsonError, lexer::Tokenizer};
 
 #[derive(PartialEq, Debug)]
 pub struct JsonParser<Iter: Iterator<Item = JsonToken>> {
@@ -72,15 +72,16 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
         // call this when reaching '{'
     fn parse_obj2(&'tk mut self) -> Result<JsonOutput<'tk>, JsonError> {
         let start = self.iter.prev_pos();
-        let mut props = HashMap::<String, JsonValue>::new();
+        let mut props = HashMap::<u64, JsonProp<JsonStr>>::new();
         loop {
             let prop = self.parse_prop()?;
             if let Some(JsonProp { key, value }) = prop {
                 let key_slice = self.take_slice(key.0.clone())?;
-                if props.contains_key(key_slice) {
+                let hashed_key = common::hash_str(key_slice);
+                if props.contains_key(&hashed_key) {
                     return Err(JsonError::custom(format!("{} `{}`", msg::DUPLICATE_KEY, key_slice), key.0))
                 }
-                props.insert(key_slice.to_string(), value);
+                props.insert(hashed_key, JsonProp::new(JsonStr(key.0.clone()), value));
             } else {
                 let ast = JsonValue::Object(JsonObject::new(props, Span::new(start, self.iter.cur_pos())));
                 return Ok(JsonOutput::new(self, ast))
@@ -90,15 +91,16 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
     // call this when reaching '{'
     fn parse_obj(&mut self) -> Result<JsonValue, JsonError> {
         let start = self.iter.prev_pos();
-        let mut props = HashMap::<String, JsonValue>::new();
+        let mut props = HashMap::<u64, JsonProp<JsonStr>>::new();
         loop {
             let prop = self.parse_prop()?;
             if let Some(JsonProp { key, value }) = prop {
                 let key_slice = self.take_slice(key.0.clone())?;
-                if props.contains_key(key_slice) {
+                let hashed_key = common::hash_str(key_slice);
+                if props.contains_key(&hashed_key) {
                     return Err(JsonError::custom(format!("{} `{}`", msg::DUPLICATE_KEY, key_slice), key.0))
                 }
-                props.insert(key_slice.to_string(), value);
+                props.insert(hashed_key, JsonProp::new(JsonStr(key.0.clone()), value));
             } else {
                 return Ok(JsonValue::Object(JsonObject::new(props, Span::new(start, self.iter.cur_pos()))))
             }
