@@ -2,34 +2,17 @@
 
 ## Overview
 
-Easy parsing JSON source and transform it into interaction Rust type.
+Simple, zero-dependency (parsing) & zero-copy JSON Parser
+
+### Install
+
+```bash
+cargo add jsode
+```
 
 ### Getting Started
 
-#### 1. Install
-
-```toml
-[dependencies]
-jsode = { version = "0.1" }
-```
-
-#### 2. Parsing AST
-
-```rust
-use jsode::prelude::*;
-
-// `jsonde::Result` already imported via prelude mod, so you only need to write `-> Result<()>`.
-// I just wrote down it's full path to make sure you don't value it as `std::result::Result`.
-fn main() -> jsode::Result<()> {
-    let mut src = JsonParser::new("{ 'hello': 'world' }");
-
-    assert!(src.parse().is_ok());
-
-    Ok(())
-}
-```
-
-#### 3. Index json key
+#### 1. Index JSON key
 
 ```rust
 use jsode::prelude::*;
@@ -45,7 +28,7 @@ fn main() -> jsode::Result<()> {
 }
 ```
 
-#### 4. Getting/Deserialize json's property
+#### 2. Getting/Deserialize single JSON's property
 
 ```rust
 use jsode::prelude::*;
@@ -60,7 +43,7 @@ fn main() -> jsode::Result<()> {
 }
 ```
 
-#### 5. Deserialize into Rust struct
+#### 3. Deserialize into struct
 
 ```rust
 use jsode::prelude::*;

@@ -2,12 +2,12 @@ workspace = { members = ["jsode_macro"] }
 
 [package]
 name = "jsode"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
-description = "a simple, zero-dependency json parser"
+description = "Simple, zero-copy(parisng) & zero-dependency JSON Parser"
 license = "MIT"
 repository = "https://github.com/taminhtienhai/jsode"
-documentation = "https://docs.rs/jsode"
+documentation = "https://docs.rs/jsode/0.1.2"
 
 [lints.clippy]
 never_loop = "allow"

@@ -27,6 +27,7 @@
     - ~~[ ] support tuple struct~~ (impossible because tuple don't have keys, tuple layout also look more like a array)
 - [x] prefer using HashMap to store key rather than Vec
 - [x] support property `#[prop = $prop_name]` for field mapping
+- [ ] completely zero copy
 
 ## Road to 0.2
 
