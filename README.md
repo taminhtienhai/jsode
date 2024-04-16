@@ -2,7 +2,7 @@
 
 ## Overview
 
-Simple, zero-dependency (parsing) & zero-copy JSON Parser
+Simple, zero-copy & zero-dependency JSON Parser
 
 ### Install
 
