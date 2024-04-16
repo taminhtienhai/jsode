@@ -6,6 +6,8 @@ version = "0.1.0"
 edition = "2021"
 description = "a simple, zero-dependency json parser"
 license = "MIT"
+repository = "https://github.com/taminhtienhai/jsode"
+documentation = "https://docs.rs/jsode"
 
 [lints.clippy]
 never_loop = "allow"
