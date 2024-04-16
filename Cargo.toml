@@ -11,7 +11,7 @@ license = "MIT"
 never_loop = "allow"
 
 [dependencies]
-jsode_macro = { path = "./jsode_macro" }
+jsode_macro = { version = "0.1" }
 
 [features]
 default = ["macro"]

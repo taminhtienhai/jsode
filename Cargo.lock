@@ -6,12 +6,23 @@ version = 3
 name = "jsode"
 version = "0.1.0"
 dependencies = [
- "jsode_macro",
+ "jsode_macro 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "jsode_macro"
 version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "jsode_macro"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a88ab5038eba4f79eecc9ae513e3fa999dd5187ec6c0b9489bc12aa066d0c4cc"
 dependencies = [
  "proc-macro2",
  "quote",
