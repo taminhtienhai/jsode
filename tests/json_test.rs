@@ -8,6 +8,7 @@ fn sample1() -> Result<()> {
     assert_eq!(Ok("Apple"), out.index("fruit").unwrap().parse_type::<String>().as_deref());
     assert_eq!(Ok("Large"), out.index("size").unwrap().parse_type::<String>().as_deref());
     assert_eq!(Ok("Red"), out.index("color").unwrap().parse_type::<String>().as_deref());
+    assert_eq!(Ok("\\\\"), out.index("escape").unwrap().parse_type::<String>().as_deref());
     Ok(())
 }
 

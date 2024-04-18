@@ -6,6 +6,7 @@ pub(crate) mod msg {
     pub const EMPTY_JSON:           &str = "json input is empty";
     pub const INVALID_ARRAY:        &str = "not allow this token when parsing array";
     pub const DUPLICATE_KEY:        &str = "already exist key";
+    pub const INVALID_ESCAPE:       &str = "the following escape string is not allow";
 }
 
 pub(crate) mod ascii {
