@@ -69,7 +69,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
 }
 
 impl <'tk> JsonParser<Tokenizer<'tk>> {
-        // call this when reaching '{'
+    // call this when reaching '{'
     fn parse_obj2(&'tk mut self) -> Result<JsonOutput<'tk>, JsonError> {
         let start = self.iter.prev_pos();
         let mut props = HashMap::<u64, JsonProp<JsonStr>>::new();

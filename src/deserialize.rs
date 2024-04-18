@@ -158,11 +158,11 @@ mod tests {
 
     #[test]
     fn parse_usize() {
-        let mut obj = JsonParser::new("{ a: 1234567 }");
+        let mut obj = JsonParser::new(r#"{ a: 1234567,b: "\"b\"" }"#);
         let     ast = obj.parse().unwrap();
         let    item = ast.index("a").unwrap().parse_type::<usize>();
-
         assert_eq!(Ok(1234567), item);
+        assert_eq!(Ok("\\\"b\\\""), ast.index("b").unwrap().parse_type::<String>().as_deref())
     }
 
     #[test]

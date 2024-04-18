@@ -136,6 +136,15 @@ impl <'a> Tokenizer<'a> {
                 let Some(next_item) = self.next_item() else {
                     break JsonToken::error(constant::msg::MISSING_DOUBLE_COLON, at, self.pos).into();
                 };
+                if next_item.eq(&b'\\')  {
+                    let Some(next_item) = self.next_item() else {
+                        break JsonToken::error(constant::msg::MISSING_DOUBLE_COLON, at, self.pos).into();
+                    };
+                    if matches!(next_item, b'"' | b'\\' | b'\n' | b'\t') {
+                        continue;
+                    }
+                    break JsonToken::error(format!("{}: {}", constant::msg::INVALID_ESCAPE, char::from_u32(next_item as u32).unwrap()), at, self.pos).into();
+                }
                 if next_item.eq(&b'"') {
                     break JsonToken::str(at, self.pos).into()
                 }
@@ -163,7 +172,7 @@ impl <'a> Tokenizer<'a> {
                 }
             },
             
-            unknown_token => JsonToken::error(format!("{} {}", constant::msg::NOT_SUPPORT_TOKEN, unknown_token), at, self.pos).into()
+            unknown_token => JsonToken::error(format!("{} {}", constant::msg::NOT_SUPPORT_TOKEN, char::from_u32(unknown_token as u32).unwrap()), at, self.pos).into()
         }
     }
 }
