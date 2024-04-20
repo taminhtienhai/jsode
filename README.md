@@ -4,6 +4,9 @@
 
 Simple, zero-copy & zero-dependency JSON Parser
 
+> [!WARNING]
+> This project is under heavy development which contain bugs and unresolve [issues](https://github.com/taminhtienhai/jsode/issues/2). Please consider when using it for prouduction. 
+
 ### Install
 
 ```bash
