@@ -3,18 +3,21 @@
 ### Bugs
 
 - [x] `get_span` inside `parse_obj` auto increase `start` & `end` by 1???
+- [ ] breaking when meet eacapse token ('\') 
 
 ## Issues
 
 - [x] convert `Option<Result<u8,JsonError>>` -> `Result<Option<u8>,JsonError>`
 - [x] rename this crate
+- [x] apply github CI/CD
+- [ ] make `unsafe` become resonate
 - [ ] support `impl_deserialize` macro_rules, generate `iml Deserialize` trait on input types
 - [ ] write document
 - [ ] bring some usecases/examples
-- [ ] apply github CI/CD
 - [ ] revamp error leverage derive macro
 - [ ] test on real & large json file
 - [ ] add benchmark
+
 
 ## Road to 0.1
 
@@ -27,7 +30,7 @@
     - ~~[ ] support tuple struct~~ (impossible because tuple don't have keys, tuple layout also look more like a array)
 - [x] prefer using HashMap to store key rather than Vec
 - [x] support property `#[prop = $prop_name]` for field mapping
-- [ ] completely zero copy
+- [x] completely zero copy
 
 ## Road to 0.2
 
