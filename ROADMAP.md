@@ -1,5 +1,41 @@
 # Project Roadmap
 
+### Ideas
+
+1. allow user define their own custom placeholder then inject after
+
+Example:
+```rust
+fn main() -> jsode::Result<()> {
+    // this tell parser to replace both key & value
+    let dollar = Label::new("currency", "dollar");
+
+    let parser = JSONParser::new("{ $currency: "100_$currency" }");
+    let ast = parser.parse(dollar)?;
+
+    assert_eq!(Ok("100_dollar"), ast.index("dollar").unwrap().parse_into::<String>()?);
+    assert_eq!(Ok("100_dollar"), ast.index(dollar).unwrap().parse_into::<String>()?);
+
+    Ok(())
+}
+```
+
+If the following deserializaton doesn't include related label, it could be fail.
+
+We can tell the parser that only replace the JSON's key:
+
+```rust
+let dollar = Label::key_only("currency", "dollar");
+```
+
+Similar in case value-only:
+
+```rust
+let dollar = Label::value_only("currency", "dollar");
+```
+
+Everything done lazy. Nothing happened until use call `parse_into`.
+
 ### Bugs
 
 - [x] `get_span` inside `parse_obj` auto increase `start` & `end` by 1???
@@ -34,17 +70,23 @@
 
 ## Road to 0.2
 
-- [ ] support pattern query
+- [ ] revamp project base on [JSON5](https://spec.json5.org/) specification
 - [ ] row & column tracking
-- [ ] support `Lazy<'l, T: Deserialize>` struct, benefit you to execute operator like eq(==), le(<), gt(>), gte(>=) on value without derialize it
-- [ ] support property `#[msg = $err_msg]` for custom error message
 - [ ] enhance error message
     - [ ] Diagnostic struct (visualize location of error on input source)
+- [ ] more test cases
+- [ ] benchmark
+
+## Road to 0.3
+
+- [ ] support pattern query
+- [ ] support `Lazy<'l, T: Deserialize>` struct, benefit you to execute operator like eq(==), le(<), gt(>), gte(>=) on value without derialize it
+- [ ] support property `#[msg = $err_msg]` for custom error message
 - [ ] impl Deserialize on more type
     - [ ] `&[T]`
     - [ ] `HashMap<String, T>`
 
-## Road to 0.3
+## Road to 0.4
 
 - [ ] support `Serialize` macro (multi targets)
 - [ ] support `no_std`
