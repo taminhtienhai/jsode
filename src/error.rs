@@ -15,8 +15,8 @@ pub enum ErrorMsg {
 
 #[derive(PartialEq)]
 pub struct JsonError {
-    span: Span,
-    msg: ErrorMsg,
+    pub(crate) span: Span,
+    pub(crate) msg: ErrorMsg,
 }
 
 #[rustfmt::skip]

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, hash::Hash};
 
-use crate::{common::Holder, error::JsonError, lexer::Tokenizer, parser::JsonParser};
+use crate::{common::{self, Holder}, error::JsonError, lexer::Tokenizer, parser::JsonParser};
 
 #[derive(PartialEq, PartialOrd, Debug)]
 pub enum JsonType {
@@ -122,6 +122,12 @@ impl From<JsonToken> for Option<(JsonToken, Option<u8>,)> {
     }
 }
 
+impl From<JsonError> for JsonToken {
+    fn from(value: JsonError) -> Self {
+        JsonToken::Error(value.to_string(), value.span)
+    }
+}
+
 impl JsonToken {
     pub fn size(&self) -> usize {
         match self {
@@ -179,6 +185,14 @@ impl <'p> JsonOutput<'p> {
     #[inline]
     pub fn to_slice(&self) -> Result<&str> {
         self.parser.take_slice(self.ast.as_ref().get_span())
+    }
+
+    pub fn to_bytes(&self) -> &[u8] {
+        match &self.ast {
+            common::Holder::Owned(t) => self.parser.take_raw(t.get_span()), 
+            common::Holder::Borrow(t) => self.parser.take_raw(t.get_span()),
+        }
+        // self.parser.take_raw(self.ast)
     }
 }
 
@@ -255,7 +269,10 @@ impl JsonValue {
         match self {
             Self::Object(JsonObject { span, .. }) => span.clone(),
             Self::Array(JsonArray { span, .. }) => span.clone(),
-            Self::Data(_, span) => span.clone(),
+            Self::Data(ty, span) => match ty {
+                JsonType::Str => span.clone().collapse(1),
+                _ => span.clone(),
+            }
         }
     }
 }

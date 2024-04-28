@@ -39,6 +39,12 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
 
 
 impl <'tk> JsonParser<Tokenizer<'tk>> {
+
+    #[inline]
+    pub fn take_raw(&self, span: Span) -> &[u8] {
+        self.iter.take_raw(span)
+    }
+
     #[inline]
     pub fn take_slice(&self, span: Span) -> Result<&str, JsonError> {
         self.iter.take_slice(span)
@@ -172,7 +178,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
         let value = match self.next_token() {
             Some(JsonToken::Punct(Punct::OpenCurly, _)) => self.parse_obj()?,
             Some(JsonToken::Punct(Punct::OpenSquare, _)) => self.parse_array()?,
-            Some(JsonToken::Data(JsonType::Str, data_span)) => JsonValue::Data(JsonType::Str, data_span.collapse(1)),
+            Some(JsonToken::Data(JsonType::Str, data_span)) => JsonValue::Data(JsonType::Str, data_span),
             Some(JsonToken::Data(data, data_span)) => JsonValue::Data(data, data_span),
             Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(err, span)),
             Some(tk) =>  return Err(JsonError::custom("[parse_prop] not able to parse this token", tk.get_span())),

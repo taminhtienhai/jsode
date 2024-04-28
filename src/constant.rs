@@ -10,8 +10,18 @@ pub(crate) mod msg {
 }
 
 pub(crate) mod ascii {
+    pub const BACKSPACE: u8 = 0x08;
     pub const HORIZONTAL_TAB: u8 = 0x09;
-    pub const SPACE: u8 = 0x20;
     pub const LINE_FEED: u8 = 0x0A;
+    pub const FORM_FEED: u8 = 0x0C;
+    pub const SPACE: u8 = 0x20;
     pub const CARRIAGE_RETURN: u8 = 0x0D;
+    pub const NON_BREAKING_SPACE: u8 = 0xA0;
+    // pub const PARAGRAPH_SEPARATOR: u8 = 0x2029;
+    // pub const LINE_SEPARATOR: u8 = b'\u{00A0}';
+    // pub const BYTE_ORDER_MARK: u8 = b'\u{FEFF}';
+
+    pub const ESCAPE: u8 = b'\\';
+    pub const SINGLE_QUOTE: u8= b'\'';
+    pub const DOUBLE_QUOTE: u8= b'\"';
 }
