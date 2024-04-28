@@ -1,0 +1,12 @@
+{
+    "quote": "\"",
+    "reserver_solidus": "\\",
+    'backspace': "\b",
+    formfeed: "\f",
+    "newline": "\n",
+    "carriage_return": "\r",
+    "tab": "\t \", { tab: \"t\" }",
+    "single_quote": '\" \' \"',
+    "all": "\u032c \\ \/ \b \f \n \r \\\r\\\\\/ \t",
+    "special": '\x5C \u005C\u005c'
+}

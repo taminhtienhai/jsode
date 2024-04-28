@@ -53,6 +53,15 @@ impl <T: Deserialize> Deserialize for Vec<T> {
     }
 }
 
+// impl Deserialize for &[u8] {
+//     fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
+//         match &out.ast {
+//             common::Holder::Owned(t) => Ok(out.parser.take_raw(t.get_span())), 
+//             common::Holder::Borrow(t) => Err(JsonError::empty_json(t.get_span())),
+//         }
+//     }
+// }
+
 #[inline(always)]
 fn parse_properties_to_vec<T: Deserialize>(
     parser: &JsonParser<Tokenizer<'_>>,

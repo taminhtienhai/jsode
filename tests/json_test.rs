@@ -79,3 +79,50 @@ fn sample3() -> Result<()> {
     assert_eq!(Some(&Color::new("black", "#000")), out.get(6));
     Ok(())
 }
+
+#[test]
+fn sample5() -> Result<()> {
+    let mut json = JsonParser::new(include_str!("../resources/valid/sample5.json5"));
+    let out = json.parse()?;
+
+    assert_eq!(Ok("and you can quote me on that"), out.index("unquoted").unwrap().parse_into::<String>().as_deref());
+    assert_eq!(Ok("I can use \"double quotes\" here"), out.index("singleQuotes").unwrap().parse_into::<String>().as_deref());
+    assert_eq!(Ok("Look, Mom! \\\nNo \\\\n's!"), out.index("lineBreaks").unwrap().parse_into::<String>().as_deref());
+    assert_eq!(Ok(vec!["arrays".to_string()]), out.index("andIn").unwrap().parse_into::<Vec<String>>());
+    // assert_eq!(Ok(912559), out.index("hexadecimal").unwrap().parse_into::<usize>());
+    // assert_eq!(Ok(8675309), out.index("andTrailing").unwrap().parse_into::<usize>());
+    
+    Ok(())
+}
+
+#[test]
+fn sample6() -> Result<()> {
+    let mut json = JsonParser::new(include_str!("../resources/valid/sample6.json5"));
+    let out = json.parse()?;
+
+    assert_eq!("\\\"".as_bytes(), out.index("quote").unwrap().to_bytes());
+    assert_eq!([b'\\', b'\\'], out.index("reserver_solidus").unwrap().to_bytes());
+    assert_eq!([b'\\', b'b'] , out.index("backspace").unwrap().to_bytes());
+    assert_eq!([b'\\', b'f'] , out.index("formfeed").unwrap().to_bytes());
+    assert_eq!([b'\\', b'n'] , out.index("newline").unwrap().to_bytes());
+    assert_eq!([b'\\', b'r'] , out.index("carriage_return").unwrap().to_bytes());
+    assert_eq!("\\t \\\", { tab: \\\"t\\\" }".as_bytes(), out.index("tab").unwrap().to_bytes());
+    assert_eq!("\\\" \\\' \\\"".as_bytes(), out.index("single_quote").unwrap().to_bytes());
+    assert_eq!(r"\u032c \\ \/ \b \f \n \r \\\r\\\\\/ \t".as_bytes(), out.index("all").unwrap().to_bytes());
+    assert_eq!(r"\x5C \u005C\u005c".as_bytes(), out.index("special").unwrap().to_bytes());
+
+    Ok(())
+}
+
+#[test]
+fn sample7() -> Result<()> {
+    let mut json = JsonParser::new(include_str!("../resources/valid/sample7.json5"));
+    let out = json.parse()?;
+
+    let raw_json = out.index("raw_json").unwrap().parse_into::<String>().unwrap();
+
+    // let mut nested_json = JsonParser::new(&raw_json);
+    // let nested_out = nested_json.parse()?;
+
+    Ok(())
+}
