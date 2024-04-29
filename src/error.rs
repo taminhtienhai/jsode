@@ -62,6 +62,10 @@ impl JsonError {
         Self { span, msg: ErrorMsg::InvalidArray, }
     }
 
+    pub fn invalid_type(span: Span, ty: impl Into<String>) -> Self {
+        Self { span, msg: ErrorMsg::Custom(format!("Invalid type, expect {}", ty.into())), }
+    }
+
     pub fn empty_json(span: Span) -> Self {
         Self { span, msg: ErrorMsg::EmptyJson, }
     }

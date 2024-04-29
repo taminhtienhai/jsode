@@ -28,8 +28,8 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
     pub fn parse(&'tk mut self) -> core::result::Result<JsonOutput, JsonError> {
         while let Some(next_token) = self.iter.next() {
             match next_token {
-                JsonToken::Punct(Punct::OpenCurly, _) => return self.parse_obj2(),
-                JsonToken::Punct(Punct::OpenSquare, _) => return self.parse_array2(),
+                JsonToken::Punct(Punct::OpenCurly, _) => return self.start_parse_obj(),
+                JsonToken::Punct(Punct::OpenSquare, _) => return self.start_parse_array(),
                 _ => return Err(JsonError::missing_double_colon(next_token.get_span())),
             };
         };
@@ -76,7 +76,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
 
 impl <'tk> JsonParser<Tokenizer<'tk>> {
     // call this when reaching '{'
-    fn parse_obj2(&'tk mut self) -> Result<JsonOutput<'tk>, JsonError> {
+    fn start_parse_obj(&'tk mut self) -> Result<JsonOutput<'tk>, JsonError> {
         let start = self.iter.prev_pos();
         let mut props = HashMap::<u64, JsonProp<JsonStr>>::new();
         loop {
@@ -113,7 +113,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
         }
     }
 
-    fn parse_array2(&'tk mut self) -> Result<JsonOutput<'tk>, JsonError> {
+    fn start_parse_array(&'tk mut self) -> Result<JsonOutput<'tk>, JsonError> {
         let start = self.iter.prev_pos();
         let mut items = Vec::<JsonProp<JsonInt>>::new();
         let mut pos = 0;
@@ -128,6 +128,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
             }
         }
     }
+
     // being call when reaching '['
     fn parse_array(&mut self) -> Result<JsonValue, JsonError> {
         let start = self.iter.prev_pos();
@@ -160,7 +161,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
 
     fn parse_prop(&mut self) -> Result<Option<JsonProp<JsonStr>>, JsonError> {
         let key_span = match self.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace, _))) {
-            Some(JsonToken::Data(JsonType::Str, span)) => span.collapse(1),
+            Some(JsonToken::Data(JsonType::Str(_), span)) => span.collapse(1),
             Some(JsonToken::Data(JsonType::Ident, span)) => span,
             Some(JsonToken::Punct(Punct::CloseCurly, _)) => return Ok(None),
             Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(err, span)),
@@ -178,7 +179,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
         let value = match self.next_token() {
             Some(JsonToken::Punct(Punct::OpenCurly, _)) => self.parse_obj()?,
             Some(JsonToken::Punct(Punct::OpenSquare, _)) => self.parse_array()?,
-            Some(JsonToken::Data(JsonType::Str, data_span)) => JsonValue::Data(JsonType::Str, data_span),
+            Some(JsonToken::Data(JsonType::Str(str_value), data_span)) => JsonValue::Data(JsonType::Str(str_value), data_span),
             Some(JsonToken::Data(data, data_span)) => JsonValue::Data(data, data_span),
             Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(err, span)),
             Some(tk) =>  return Err(JsonError::custom("[parse_prop] not able to parse this token", tk.get_span())),

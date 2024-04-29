@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::HashMap, hash::Hash, str::Utf8Error};
 
 use crate::{common::{self, Holder}, error::JsonError, lexer::Tokenizer, parser::JsonParser};
 
@@ -6,7 +6,7 @@ use crate::{common::{self, Holder}, error::JsonError, lexer::Tokenizer, parser::
 pub enum JsonType {
     Ident,
     // a string will start and end with symbol \' or \"
-    Str,
+    Str(Vec<StrType>),
     // continuously numbers, end when reaching symbol space or comma
     Num,
     // true | false literal, end with comma
@@ -17,6 +17,60 @@ pub enum JsonType {
     Undefined,
     // NaN ignorecase
     NaN,
+}
+
+#[derive(PartialEq, PartialOrd, Debug, Clone)]
+pub enum StrType {
+    Str(Span),
+    // \xXX (U+0000 through U+00FF)
+    Ascii(Span),
+    // \uXXXX (U+0000 through U+FFFF)
+    Unicode(Span),
+    // \X
+    Escape(Span),
+    // \'	Apostrophe	    U+0027
+    // \"	Quotation mark	U+0022
+    // \\	Reverse solidus	U+005C
+    // \b	Backspace	    U+0008
+    // \f	Form feed	    U+000C
+    // \n	Line feed	    U+000A
+    // \r	Carriage return	U+000D
+    // \t	Horizontal tab	U+0009
+    // \v	Vertical tab	U+000B
+    // \0	Null	        U+0000
+    Special(Span),
+}
+
+impl StrType {
+    pub(crate) fn parse_str<'a>(&'a self, parser: &'a JsonParser<Tokenizer<'a>>) -> Result<&'a str> {
+        match self {
+            Self::Str(span) => Ok(parser.take_slice(Span::new(span.start, span.end))?),
+            Self::Ascii(span) => Ok(parser.take_slice(Span::new(span.start + 2, span.end))?),
+            Self::Unicode(span) => Ok(parser.take_slice(Span::new(span.start + 2, span.end))?),
+            Self::Escape(span) => Ok(parser.take_slice(Span::new(span.start + 1, span.end))?),
+            Self::Special(span) => {
+                let raw = parser.take_raw(span.clone());
+                let item = map_special_char(raw[0]);
+                Ok(item)
+            },
+        }
+    }
+}
+
+const fn map_special_char<'a>(c: u8) -> &'a str {
+    match c {
+        b'\'' => "\'",
+        b'\"' => "\"",
+        b'\\' => "\\",
+        b'b'  => "\u{08}",
+        b'f'  => "\u{0C}",
+        b'n'  => "\u{0A}",
+        b'r'  => "\u{0D}",
+        b't'  => "\u{09}",
+        b'v'  => "\u{0B}",
+        b'0'  => "\u{00}",
+        _ => "\u{00}",
+    }
 }
 
 #[derive(PartialEq, PartialOrd, Debug)]
@@ -80,7 +134,7 @@ impl JsonToken {
     #[inline(always)]
     pub fn ident(start: usize, end: usize) -> Self { Self::Data(JsonType::Ident, Span::new(start, end)) }
     #[inline(always)]
-    pub fn str(start: usize, end: usize) -> Self { Self::Data(JsonType::Str, Span::new(start, end)) }
+    pub fn str(str_tokens: Vec<StrType>, start: usize, end: usize) -> Self { Self::Data(JsonType::Str(str_tokens), Span::new(start, end)) }
     #[inline(always)]
     pub fn number(start: usize, end: usize) -> Self { Self::Data(JsonType::Num, Span::new(start, end)) }
     #[inline(always)]
@@ -176,7 +230,7 @@ impl <'p> JsonOutput<'p> {
     }
 
     #[inline]
-    pub fn parse_type<T: std::str::FromStr>(&self) -> Result<T> {
+    pub(crate) fn parse_type<T: std::str::FromStr>(&self) -> Result<T> {
         let span = self.ast.as_ref().get_span();
         let slice = self.parser.take_slice(span.clone())?;
         slice.parse::<T>().map_err(|_| JsonError::custom("cannot parse to this type", span))
@@ -269,10 +323,8 @@ impl JsonValue {
         match self {
             Self::Object(JsonObject { span, .. }) => span.clone(),
             Self::Array(JsonArray { span, .. }) => span.clone(),
-            Self::Data(ty, span) => match ty {
-                JsonType::Str => span.clone().collapse(1),
-                _ => span.clone(),
-            }
+            Self::Data(JsonType::Str(_), span) => span.clone().collapse(1),
+            Self::Data(_, span) => span.clone(),
         }
     }
 }

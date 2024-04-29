@@ -2,5 +2,5 @@
     "fruit": "Apple",
     "size": "Large",
     "color": "Red",
-    "escape": "\\"
+    "escape": "\t"
 }
