@@ -1,4 +1,4 @@
-use crate::{common, core::{JsonInt, JsonOutput, JsonProp, JsonValue}, error::JsonError, lexer::Tokenizer, parser::JsonParser};
+use crate::{common, core::{JsonInt, JsonOutput, JsonProp, JsonType, JsonValue, StrType}, error::JsonError, lexer::Tokenizer, parser::JsonParser, Span};
 
 pub trait Deserialize: Sized {
     fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError>;
@@ -38,7 +38,12 @@ impl Deserialize for usize {
 
 impl Deserialize for String {
     fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
-        out.parse_type::<String>()
+        match &out.ast {
+            common::Holder::Owned(JsonValue::Data(JsonType::Str(str_tokens), _)) => Ok(parse_str(out.parser, str_tokens)?),
+            common::Holder::Borrow(JsonValue::Data(JsonType::Str(str_tokens), _)) => Ok(parse_str(out.parser, str_tokens)?),
+            common::Holder::Owned(other_type) => Err(JsonError::invalid_type(other_type.get_span(), "String")),
+            common::Holder::Borrow(other_type) => Err(JsonError::invalid_type(other_type.get_span(), "String")),
+        }
     }
 }
 
@@ -70,6 +75,22 @@ fn parse_properties_to_vec<T: Deserialize>(
     props.iter()
         .map(|prop| JsonOutput::new(parser, &prop.value).parse_into::<T>())
         .collect()
+}
+
+// todo: look later for optimization
+// currently heavy copy on source
+fn parse_str(
+    parser: &JsonParser<Tokenizer<'_>>,
+    tokens: &Vec<StrType>,
+) -> Result<String, JsonError> {
+    let mut result = Vec::<&str>::new();
+
+    for item in tokens {
+        let token = item.parse_str(parser)?;
+        result.push(token);
+    }
+
+    Ok(result.join(""))
 }
 
 // WARN: introduce memory leak because we haven't dealloc slice value after use
@@ -167,11 +188,13 @@ mod tests {
 
     #[test]
     fn parse_usize() {
-        let mut obj = JsonParser::new(r#"{ a: 1234567,b: "\"b\"" }"#);
+        let source = r#"{ a: 1234567, b: " \"b\" " }"#;
+        println!("{source}");
+        let mut obj = JsonParser::new(source);
         let     ast = obj.parse().unwrap();
         let    item = ast.index("a").unwrap().parse_type::<usize>();
         assert_eq!(Ok(1234567), item);
-        assert_eq!(Ok("\\\"b\\\""), ast.index("b").unwrap().parse_type::<String>().as_deref())
+        assert_eq!(Ok(" \"b\" ".to_string()), ast.index("b").unwrap().parse_into::<String>())
     }
 
     #[test]

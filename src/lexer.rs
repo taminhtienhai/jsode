@@ -1,5 +1,5 @@
 use std::{marker::PhantomData, ptr};
-use crate::{constant, core::{JsonToken, Span}, error::JsonError};
+use crate::{constant, core::{JsonToken, Span, StrType}, error::JsonError};
 
 #[derive(PartialEq, Debug)]
 pub struct Tokenizer<'a> {
@@ -90,6 +90,21 @@ impl <'a> Tokenizer<'a> {
         Ok(())
     }
 
+    fn next_until(&mut self, predicate: impl Fn(u8) -> bool) -> Span {
+        let start: usize = self.pos - 1;
+        loop {
+            let Some(next_item) = self.next_item() else {
+                break;
+            };
+
+            if predicate(next_item) {
+                self.step_back();
+                break;
+            }
+        }
+        Span::new(start, self.pos)
+    }
+
     #[inline(always)]
     fn step_back(&mut self) {
         self.pos -= 1;
@@ -151,43 +166,58 @@ impl <'a> Tokenizer<'a> {
             b':' => JsonToken::colon(at).into(),
             b',' => JsonToken::comma(at).into(),
             // string and literal
-            b'\'' => loop {
+            b'\'' => { let mut str_tokens = Vec::<StrType>::new(); loop {
                 // parse all character wrapped inside single quote
                 let Some(next_item) = self.next_item() else {
                     break JsonToken::error(constant::msg::MISSING_SINGLE_COLON, at, self.pos).into();
                 };
-
                 if next_item.eq(&constant::ascii::ESCAPE)  {
                     let Some(next_it) = self.next_item() else {
-                        break JsonToken::error(constant::msg::MISSING_DOUBLE_COLON, at, self.pos).into();
+                        break JsonToken::error(constant::msg::MISSING_SINGLE_COLON, at, self.pos).into();
                     };
 
-                    // handle '\uXXXX'
-                    if next_it.eq(&b'u') {
-                        match self.next_exact_until(4, |item| matches!(item, b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z')) {
-                            Ok(_) => continue,
+                    // handle '\xXX'
+                    if next_it.eq(&b'x') {
+                        match self.next_exact_until(2, |item| item.is_ascii_hexdigit()) {
+                            Ok(_) => {
+                                str_tokens.push(StrType::Ascii(Span::new(self.pos - 3, self.pos)));
+                                continue;
+                            },
                             Err(err) => break JsonToken::from(err).into(),
                         }
                     }
 
-                    // handle '\xXX'
-                    if next_it.eq(&b'x') {
-                        match self.next_exact_until(2, |item| matches!(item, b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z')) {
-                            Ok(_) => continue,
+                    // handle '\uXXXX'
+                    if next_it.eq(&b'u') {
+                        match self.next_exact_until(4, |item| item.is_ascii_hexdigit()) {
+                            Ok(_) => {
+                                str_tokens.push(StrType::Unicode(Span::new(self.pos - 5, self.pos)));
+                                continue;
+                            },
                             Err(err) => break JsonToken::from(err).into(),
                         }
+                    }
+
+                    if matches!(next_it, b'\'' | b'\"' | b'\\' | b'b' | b'f' | b'n' | b'r' | b't' | b'v' | b'0') {
+                        str_tokens.push(StrType::Special(Span::new(self.pos - 1, self.pos)));
+                        continue;
                     }
 
                     if next_it.is_ascii_digit() {
                         return JsonToken::error(format!("{}: {}", constant::msg::INVALID_ESCAPE, char::from_u32(next_it as u32).unwrap()), at, self.pos).into();
                     }
+
+                    str_tokens.push(StrType::Escape(Span::new(self.pos - 1, self.pos)));
                 }
 
                 if next_item.eq(&constant::ascii::SINGLE_QUOTE) {
-                    break JsonToken::str(at, self.pos).into()
+                    break JsonToken::str(str_tokens, at, self.pos).into()
                 }
-            },
-            b'"' => loop {
+
+                let Span { start, end, .. } = self.next_until(|it| matches!(it, b'\\' | b'\''));
+                str_tokens.push(StrType::Str(Span::new(start, end)));
+            }},
+            b'"' => { let mut str_tokens = Vec::<StrType>::new();  loop {
                 // parse all character wrapped inside double quote
                 let Some(next_item) = self.next_item() else {
                     break JsonToken::error(constant::msg::MISSING_DOUBLE_COLON, at, self.pos).into();
@@ -197,30 +227,47 @@ impl <'a> Tokenizer<'a> {
                         break JsonToken::error(constant::msg::MISSING_DOUBLE_COLON, at, self.pos).into();
                     };
 
-                    // handle '\uXXXX'
-                    if next_it.eq(&b'u') {
-                        match self.next_exact_until(4, |item| matches!(item, b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z')) {
-                            Ok(_) => continue,
+                    // handle '\xXX'
+                    if next_it.eq(&b'x') {
+                        match self.next_exact_until(2, |item| item.is_ascii_hexdigit()) {
+                            Ok(_) => {
+                                str_tokens.push(StrType::Ascii(Span::new(self.pos - 3, self.pos)));
+                                continue;
+                            },
                             Err(err) => break JsonToken::from(err).into(),
                         }
                     }
 
-                    // handle '\xXX'
-                    if next_it.eq(&b'x') {
-                        match self.next_exact_until(2, |item| matches!(item, b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z')) {
-                            Ok(_) => continue,
+                    // handle '\uXXXX'
+                    if next_it.eq(&b'u') {
+                        match self.next_exact_until(4, |item| item.is_ascii_hexdigit()) {
+                            Ok(_) => {
+                                str_tokens.push(StrType::Unicode(Span::new(self.pos - 5, self.pos)));
+                                continue;
+                            },
                             Err(err) => break JsonToken::from(err).into(),
                         }
+                    }
+
+                    if matches!(next_it, b'\'' | b'\"' | b'\\' | b'b' | b'f' | b'n' | b'r' | b't' | b'v' | b'0') {
+                        str_tokens.push(StrType::Special(Span::new(self.pos - 1, self.pos)));
+                        continue;
                     }
 
                     if next_it.is_ascii_digit() {
                         return JsonToken::error(format!("{}: {}", constant::msg::INVALID_ESCAPE, char::from_u32(next_it as u32).unwrap()), at, self.pos).into();
                     }
+
+                    str_tokens.push(StrType::Escape(Span::new(self.pos - 1, self.pos)));
                 }
+
                 if next_item.eq(&constant::ascii::DOUBLE_QUOTE) {
-                    break JsonToken::str(at, self.pos).into()
+                    break JsonToken::str(str_tokens, at, self.pos).into()
                 }
-            },
+
+                let Span { start, end, .. } = self.next_until(|it| matches!(it, b'\\' | b'"'));
+                str_tokens.push(StrType::Str(Span::new(start, end)));
+            }},
             // number
             b'0'..=b'9' => loop {
                 // parse all number include dot(.), exhauted when reaching none digit character

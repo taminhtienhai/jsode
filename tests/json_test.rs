@@ -5,10 +5,10 @@ fn sample1() -> Result<()> {
     let mut json = JsonParser::new(include_str!("../resources/valid/sample1.json"));
     let out = json.parse()?;
 
-    assert_eq!(Ok("Apple"), out.index("fruit").unwrap().parse_type::<String>().as_deref());
-    assert_eq!(Ok("Large"), out.index("size").unwrap().parse_type::<String>().as_deref());
-    assert_eq!(Ok("Red"), out.index("color").unwrap().parse_type::<String>().as_deref());
-    assert_eq!(Ok("\\\\"), out.index("escape").unwrap().parse_type::<String>().as_deref());
+    assert_eq!(Ok("Apple"), out.index("fruit").unwrap().parse_into::<String>().as_deref());
+    assert_eq!(Ok("Large"), out.index("size").unwrap().parse_into::<String>().as_deref());
+    assert_eq!(Ok("Red"), out.index("color").unwrap().parse_into::<String>().as_deref());
+    assert_eq!(Ok("\t"), out.index("escape").unwrap().parse_into::<String>().as_deref());
     Ok(())
 }
 
@@ -87,7 +87,7 @@ fn sample5() -> Result<()> {
 
     assert_eq!(Ok("and you can quote me on that"), out.index("unquoted").unwrap().parse_into::<String>().as_deref());
     assert_eq!(Ok("I can use \"double quotes\" here"), out.index("singleQuotes").unwrap().parse_into::<String>().as_deref());
-    assert_eq!(Ok("Look, Mom! \\\nNo \\\\n's!"), out.index("lineBreaks").unwrap().parse_into::<String>().as_deref());
+    assert_eq!(Ok("Look, Mom! \nNo \\n's!"), out.index("lineBreaks").unwrap().parse_into::<String>().as_deref());
     assert_eq!(Ok(vec!["arrays".to_string()]), out.index("andIn").unwrap().parse_into::<Vec<String>>());
     // assert_eq!(Ok(912559), out.index("hexadecimal").unwrap().parse_into::<usize>());
     // assert_eq!(Ok(8675309), out.index("andTrailing").unwrap().parse_into::<usize>());
@@ -121,8 +121,10 @@ fn sample7() -> Result<()> {
 
     let raw_json = out.index("raw_json").unwrap().parse_into::<String>().unwrap();
 
-    // let mut nested_json = JsonParser::new(&raw_json);
-    // let nested_out = nested_json.parse()?;
+    let mut nested_json = JsonParser::new(&raw_json);
+    let nested_out = nested_json.parse()?;
+
+    assert_eq!("barrrr", nested_out.index("foo").unwrap().parse_into::<String>()?);
 
     Ok(())
 }

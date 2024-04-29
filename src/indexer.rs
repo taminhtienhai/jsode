@@ -56,8 +56,13 @@ mod tests {
 
     #[test]
     fn index_json_item() {
-        let mut obj = JsonParser::new("{'a':1,\"b\":2, c: 3,d : [1,2,3]}");
+        let source = "{'a':1,\"b\":2, c: 3,d : [1,2,3]}";
+
+        println!("{source}");
+
+        let mut obj = JsonParser::new(source);
         let ast = obj.parse().unwrap();
+
 
         assert_eq!(Ok("1"), ast.index("a").unwrap().to_slice());
         assert_eq!(Ok("2"), ast.index("b").unwrap().to_slice());
