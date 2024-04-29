@@ -1,38 +1,57 @@
-use crate::{common, core::{JsonInt, JsonOutput, JsonProp, JsonType, JsonValue, StrType}, error::JsonError, lexer::Tokenizer, parser::JsonParser, Span};
+use crate::{common, core::{Decimal, Heximal, Integer, JsonInt, JsonOutput, JsonProp, JsonType, JsonValue, NumType, StrType}, error::JsonError, lexer::Tokenizer, parser::JsonParser};
 
 pub trait Deserialize: Sized {
     fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError>;
 }
 
-// impl Deserialize for $ty
+macro_rules! impl_unsigned_deserialization {
+    ($type:ty) => {
+        impl Deserialize for $type {
+            fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
+                match &out.ast {
+                    // positive number
+                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Positive(int_span))), _)) => out.parse_type_span::<$type>(int_span.clone()),
+                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Positive(int_span))), _)) => out.parse_type_span::<$type>(int_span.clone()),
+                    // hexadecimal
+                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Hex(Heximal::Positive(hex_span))), _)) => out.to_slice_span(hex_span.clone().shrink_left(2)).and_then(|slice| <$type>::from_str_radix(slice,16).map_err(|err| JsonError::custom(err.to_string(), hex_span.clone()))),
+                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Hex(Heximal::Positive(hex_span))), _)) =>  out.to_slice_span(hex_span.clone().shrink_left(2)).and_then(|slice| <$type>::from_str_radix(slice,16).map_err(|err| JsonError::custom(err.to_string(), hex_span.clone()))),
+                    // [error] negative number
+                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Negative(int_span))), _)) => Err(JsonError::custom(format!("cannot convert negative number to {}", stringify!($type)), int_span.clone())),
+                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Negative(int_span))), _)) => Err(JsonError::custom(format!("cannot convert negative number to {}", stringify!($type)), int_span.clone())),
+                    // [error] other
+                    common::Holder::Owned(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type {}", other_type.get_type_name(), stringify!($type)), other_type.get_span())),
+                    common::Holder::Borrow(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type {}", other_type.get_type_name(), stringify!($type)), other_type.get_span())),
+                }
+            }
+        }
+    };
+    ($type:ty, $($types:ty),+) => {
+        impl_unsigned_deserialization!($type);
+        impl_unsigned_deserialization!($($types),+);
+    };
+}
 
-impl Deserialize for u8 {
+impl_unsigned_deserialization!(u8, u16, u32, u64, usize);
+
+impl Deserialize for f32 {
     fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
-        out.parse_type::<u8>()
+        match &out.ast {
+            common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Decimal(_)), _)) => out.parse_type::<f32>(), 
+            common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Decimal(_)), _)) => out.parse_type::<f32>(),
+            common::Holder::Owned(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type f32", other_type.get_type_name()), other_type.get_span())),
+            common::Holder::Borrow(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type f32", other_type.get_type_name()), other_type.get_span())),
+        }
     }
 }
 
-impl Deserialize for u16 {
+impl Deserialize for f64 {
     fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
-        out.parse_type::<u16>()
-    }
-}
-
-impl Deserialize for u32 {
-    fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
-        out.parse_type::<u32>()
-    }
-}
-
-impl Deserialize for u64 {
-    fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
-        out.parse_type::<u64>()
-    }
-}
-
-impl Deserialize for usize {
-    fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
-        out.parse_type::<usize>()
+        match &out.ast {
+            common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Decimal(_)), _)) => out.parse_type::<f64>(), 
+            common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Decimal(_)), _)) => out.parse_type::<f64>(),
+            common::Holder::Owned(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type f64", other_type.get_type_name()), other_type.get_span())),
+            common::Holder::Borrow(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type f64", other_type.get_type_name()), other_type.get_span())),
+        }
     }
 }
 
@@ -207,5 +226,15 @@ mod tests {
 
         assert_eq!(Ok(Color { red: 1, blue: 2, green: 3, alpha: None, inner: Nested::new(1), hue: vec![Nested::new(1)] }), item);
         assert_eq!(Ok(Color { red: 96, blue: 96, green: 96, alpha: Some(1), inner: Nested::new(1), hue: vec![Nested::new(2)] }), item2);
+    }
+
+    #[test]
+    fn parse_negative_number() -> crate::Result<()> {
+        // let mut obj = JsonParser::new(r"{ negative: -1 }");
+        // let out = obj.parse()?;
+
+        // assert!(out.index("negative").unwrap().parse_into::<u8>().inspect_err(|err| println!("{err:?}")).is_err());
+
+        Ok(())
     }
 }
