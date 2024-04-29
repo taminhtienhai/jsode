@@ -1,12 +1,11 @@
 use std::{marker::PhantomData, ptr};
-use crate::{constant, core::{JsonToken, Span, StrType}, error::JsonError};
+use crate::{constant, core::{Decimal, Heximal, Integer, JsonToken, NumType, Span, StrType}, error::JsonError};
 
 #[derive(PartialEq, Debug)]
 pub struct Tokenizer<'a> {
     ptr: *const u8,
     pos: usize,
     size: usize,
-    _next_item: Option<u8>,
     _phantom: PhantomData<&'a [u8]>,
 }
 
@@ -16,7 +15,6 @@ impl <'a> From<&'a str> for Tokenizer<'a> {
             ptr: slice.as_ptr(),
             pos: 0,
             size: slice.len(),
-            _next_item: None,
             _phantom: PhantomData,
         }
     }
@@ -26,12 +24,7 @@ impl <'a> Iterator for Tokenizer<'a> {
     type Item = JsonToken;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.parse_token().map(|(tk, next_item)| {
-            if let Some(next) = next_item {
-                self._next_item.replace(next);
-            }
-            tk
-        })
+        self.parse_token()
     }
 }
 
@@ -68,6 +61,26 @@ impl <'a> Tokenizer<'a> {
         } else {
             let next_item = unsafe { ptr::read(self.ptr.add(self.pos)) };
             self.pos += 1;
+            Some(next_item)
+        }
+    }
+
+    #[inline]
+    fn peek_prev_item(&self) -> Option<u8> {
+        if self.pos > 0 {
+            let prev_item = unsafe { ptr::read(self.ptr.add(self.pos - 1)) };
+            Some(prev_item)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn peek_next_item(&self) -> Option<u8> {
+        if self.pos + 1 >= self.size {
+            None
+        } else {
+            let next_item = unsafe { ptr::read(self.ptr.add(self.pos + 1)) };
             Some(next_item)
         }
     }
@@ -116,8 +129,6 @@ impl <'a> Tokenizer<'a> {
         std::str::from_utf8(buf).map(|res| match res {
             "true"      => JsonToken::boolean(true, start),
             "false"     => JsonToken::boolean(false, start),
-            "undefined" => JsonToken::undefined(start),
-            x if x.eq_ignore_ascii_case("nan") => JsonToken::NaN(start),
             _           => JsonToken::ident(start, self.pos),
         }).unwrap_or_else(|err| JsonToken::error(err.to_string(), start, gap))
         
@@ -125,11 +136,10 @@ impl <'a> Tokenizer<'a> {
 }
 
 impl <'a> Tokenizer<'a> {
-    pub fn parse_token(&mut self) -> Option<(JsonToken, Option<u8>,)> {
+    #[inline(always)]
+    pub fn parse_token(&mut self) -> Option<JsonToken> {
         let at = self.pos;
-        let next_item = self._next_item.take().inspect(|_| {
-            self.pos += 1;
-        }).or_else(|| self.next_item())?;
+        let next_item = self.next_item()?;
 
         match next_item {
             // ws = *(
@@ -156,7 +166,7 @@ impl <'a> Tokenizer<'a> {
                     | constant::ascii::NON_BREAKING_SPACE
                     | constant::ascii::BACKSPACE) {
                     self.step_back();
-                    break Some((JsonToken::whitespace(at, self.pos), Some(next_item)))
+                    break Some(JsonToken::whitespace(at, self.pos))
                 }
             },
             b'{' => JsonToken::open_curly(at).into(),
@@ -268,16 +278,79 @@ impl <'a> Tokenizer<'a> {
                 let Span { start, end, .. } = self.next_until(|it| matches!(it, b'\\' | b'"'));
                 str_tokens.push(StrType::Str(Span::new(start, end)));
             }},
-            // number
-            b'0'..=b'9' => loop {
-                // parse all number include dot(.), exhauted when reaching none digit character
-                let Some(next_item) = self.next_item() else {
-                    break JsonToken::number(at, self.pos).into();
+            // negative number
+            // b'-' => {
+            //     let start: usize = self.pos;
+            //     let Some(next_item) = self.next_item() else {
+            //         return JsonToken::error("Invalid negative number, should following by at least a number", start, self.pos).into();
+            //     };
+
+            //     if next_item.eq(&b'0') {
+            //         if matches!(next_item, b'x' | b'X') {
+            //             let hex_span = self.next_until(|item| !item.is_ascii_hexdigit());
+            //             return Some((JsonToken::number(NumType::Hex(hex_span), at, self.pos), Some(next_item)));
+            //         }
+            //         return JsonToken::error("Invalid positive hexadecimal", start, self.pos).into();
+            //     }
+
+            //     if next_item.is_ascii_digit() {
+
+            //     }
+
+            //     return JsonToken::error("Invalid positive hexadecimal", start, self.pos).into();
+            // },
+            // b'-' | b'+' => {
+            // },
+            // positive hexadecimal
+            b'0' => {
+                let Some(next_it) = self.next_item() else {
+                    return JsonToken::number(Integer::Positive(Span::new(at, self.pos)).into(), at, self.pos).into()
                 };
-                if !next_item.is_ascii_digit() {
+                if matches!(next_it, b'x' | b'X') {
+                    let _ = self.next_until(|item| !item.is_ascii_hexdigit());
+                    JsonToken::number(Heximal::Positive(Span::new(at, self.pos)).into(), at, self.pos).into()
+                } else if next_it.eq(&b'.') {
+                    let frac_span = self.next_until(|item| !item.is_ascii_alphanumeric());
+                    JsonToken::number(Decimal::Positive(None, Some(frac_span)).into(), at, self.pos).into()
+                } else if next_it.is_ascii_digit() {
+                    let _ = self.next_until(|item| !item.is_ascii_digit());
+                    JsonToken::error("Invalid integer, not allow number that start with '0'", at, self.pos).into()
+                } else {
                     self.step_back();
-                    break Some((JsonToken::number(at, self.pos), Some(next_item)));
+                    JsonToken::number(Integer::Positive(Span::new(at, self.pos)).into(), at, self.pos).into()
                 }
+            },
+            b'.' => {
+                let frac_span = self.next_until(|item| !item.is_ascii_alphanumeric());
+                if frac_span.end != at {
+                    JsonToken::number(Decimal::Positive(None, Some(frac_span)).into(), at, self.pos).into()
+                } else {
+                    JsonToken::error("Invalid decimal fracment", at, self.pos).into()
+                }
+            },
+            // positive integer or decimal
+            b'1'..=b'9' => {
+                let int_span = self.next_until(|item| !item.is_ascii_alphanumeric());
+
+                let Some(next_item) = self.next_item() else {
+                    return JsonToken::number(Integer::Positive(int_span).into(), at, self.pos).into();
+                };
+
+                // handle fractional
+                if next_item.eq(&b'.') {
+                    let dot_pos = self.pos;
+                    let frac_span = self.next_until(|item| !item.is_ascii_alphanumeric());
+
+                    if frac_span.end != dot_pos {
+                        return JsonToken::number(Decimal::Positive(Some(int_span), Some(frac_span)).into(), at, self.pos).into();
+                    } else {
+                        return JsonToken::number(Decimal::Positive(Some(int_span), None).into(), at, self.pos).into();
+                    }
+                }
+
+                self.step_back();
+
+                JsonToken::number(Integer::Positive(int_span).into(), at, self.pos).into()
             },
             // identity or keyword
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => loop {
@@ -287,7 +360,7 @@ impl <'a> Tokenizer<'a> {
                 // accept ident has number in their name such as 'u8', 'u16'
                 if !matches!(next_item, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_') {
                     self.step_back();
-                    break Some((self.parse_keyword(at), Some(next_item)))
+                    break Some(self.parse_keyword(at))
                 }
             },
             
@@ -308,7 +381,7 @@ mod tests {
         assert_eq!(Some(JsonToken::whitespace(1,2)), tokens.next());
         assert_eq!(Some(JsonToken::ident(2, 5))    , tokens.next());
         assert_eq!(Some(JsonToken::colon(5))       , tokens.next());
-        assert_eq!(Some(JsonToken::number(6,7))    , tokens.next());
+        assert_eq!(Some(JsonToken::number(Integer::Positive(Span::new(6,7)).into(), 6, 7)), tokens.next());
         assert_eq!(Some(JsonToken::whitespace(7,9)), tokens.next());
         assert_eq!(Some(JsonToken::close_curly(9)) , tokens.next());
         assert_eq!(None                            , tokens.next());
@@ -316,15 +389,13 @@ mod tests {
 
     #[test]
     pub fn parse_keyword() {
-        let mut kws = Tokenizer::from("true false NaN undefined");
+        let mut kws = Tokenizer::from("true false undefined");
         
         assert_eq!(Some(JsonToken::boolean(true, 0)) , kws.next());
         assert_eq!(Some(JsonToken::whitespace(4,5))  , kws.next());
         assert_eq!(Some(JsonToken::boolean(false, 5)), kws.next());
         assert_eq!(Some(JsonToken::whitespace(10,11)), kws.next());
-        assert_eq!(Some(JsonToken::NaN(11))          , kws.next());
-        assert_eq!(Some(JsonToken::whitespace(14,15)), kws.next());
-        assert_eq!(Some(JsonToken::undefined(15))    , kws.next());
+        assert_eq!(Some(JsonToken::ident(11,20))     , kws.next());
         assert_eq!(None                              , kws.next());
     }
 

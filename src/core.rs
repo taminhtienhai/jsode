@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash, str::Utf8Error};
+use std::{collections::HashMap, fmt::Display, hash::Hash};
 
 use crate::{common::{self, Holder}, error::JsonError, lexer::Tokenizer, parser::JsonParser};
 
@@ -8,15 +8,23 @@ pub enum JsonType {
     // a string will start and end with symbol \' or \"
     Str(Vec<StrType>),
     // continuously numbers, end when reaching symbol space or comma
-    Num,
+    Num(NumType),
     // true | false literal, end with comma
     Bool(bool),
     // null
     Null,
-    // undefined
-    Undefined,
-    // NaN ignorecase
-    NaN,
+}
+
+impl JsonType {
+    pub const fn get_type_name(&self) -> &str {
+        match self {
+            Self::Bool(_) => "boolean",
+            Self::Ident => "ident",
+            Self::Num(num) => num.get_type_name(),
+            Self::Str(_) => "string",
+            Self::Null => "null",
+        }
+    }
 }
 
 #[derive(PartialEq, PartialOrd, Debug, Clone)]
@@ -39,6 +47,88 @@ pub enum StrType {
     // \v	Vertical tab	U+000B
     // \0	Null	        U+0000
     Special(Span),
+}
+
+impl StrType {
+    pub const fn get_type_name(&self) -> &str {
+        match self {
+            Self::Ascii(_) => "ascii",
+            Self::Escape(_) => "escape",
+            Self::Special(_) => "special",
+            Self::Unicode(_) => "unicode",
+            Self::Str(_) => "normal str",
+        }
+    }
+}
+
+#[derive(PartialEq, PartialOrd, Debug, Clone)]
+pub enum NumType {
+    // 123
+    // -123
+    Integer(Integer),
+    // 123.456
+    // -123.456
+    // .456 = 0.456
+    Decimal(Decimal),
+    // 123e-456
+    // -123e-456
+    Exponential(Span),
+    // 0xdecaf
+    // -0xC0FFEE
+    Hex(Heximal),
+    // Infinity
+    Infinity(Span),
+    // NaN
+    NaN(Span),
+}
+
+impl NumType {
+    pub const fn get_type_name(&self) -> &str {
+        match self {
+            Self::Integer(_) => "integer",
+            Self::Decimal(_) => "decimal",
+            Self::Exponential(_) => "exponential",
+            Self::Hex(_) => "hexadecimal",
+            Self::Infinity(_) => "infinity",
+            Self::NaN(_) => "NaN",
+        }
+    }
+}
+
+#[derive(PartialEq, PartialOrd, Debug, Clone)]
+pub enum Integer {
+    Positive(Span),
+    Negative(Span),
+}
+
+#[derive(PartialEq, PartialOrd, Debug, Clone)]
+pub enum Heximal {
+    Positive(Span),
+    Negative(Span),
+}
+
+#[derive(PartialEq, PartialOrd, Debug, Clone)]
+pub enum Decimal {
+    Positive(Option<Span>, Option<Span>),
+    Negative(Option<Span>, Option<Span>),
+}
+
+impl From<Decimal> for NumType {
+    fn from(value: Decimal) -> Self {
+        NumType::Decimal(value)
+    }
+}
+
+impl From<Integer> for NumType {
+    fn from(value: Integer) -> Self {
+        NumType::Integer(value)
+    }
+}
+
+impl From<Heximal> for NumType {
+    fn from(value: Heximal) -> Self {
+        NumType::Hex(value)
+    }
 }
 
 impl StrType {
@@ -111,13 +201,25 @@ impl Span {
     }
 
     #[inline]
-    pub fn extend(&self, other: Span) -> Span {
+    pub fn extend(&self, other: Span) -> Self {
         Span::new(self.start, other.end)
     }
 
-    #[inline]
-    pub fn collapse(mut self, size: usize) -> Span {
+    #[inline(always)]
+    pub fn collapse(mut self, size: usize) -> Self {
         self.start += size;
+        self.end -= size;
+        self
+    }
+
+    #[inline(always)]
+    pub fn shrink_left(mut self, size: usize) -> Self {
+        self.start += size;
+        self
+    }
+
+    #[inline(always)]
+    pub fn shrink_right(mut self, size: usize) -> Self {
         self.end -= size;
         self
     }
@@ -136,17 +238,11 @@ impl JsonToken {
     #[inline(always)]
     pub fn str(str_tokens: Vec<StrType>, start: usize, end: usize) -> Self { Self::Data(JsonType::Str(str_tokens), Span::new(start, end)) }
     #[inline(always)]
-    pub fn number(start: usize, end: usize) -> Self { Self::Data(JsonType::Num, Span::new(start, end)) }
+    pub fn number(ty: NumType, start: usize, end: usize) -> Self { Self::Data(JsonType::Num(ty), Span::new(start, end)) }
     #[inline(always)]
     pub fn boolean(value: bool, start: usize) -> Self { Self::Data(JsonType::Bool(value), Span::new(start, start + if value { 4 } else { 5 })) }
     #[inline(always)]
     pub fn null(at: usize) -> Self { Self::Data(JsonType::Null, Span::new(at, at + 1)) }
-    #[inline(always)]
-    pub fn undefined(at: usize) -> Self { Self::Data(JsonType::Undefined, Span::new(at, at + 9)) }
-    #[allow(non_snake_case)]
-    #[inline(always)]
-    pub fn NaN(at: usize) -> Self { Self::Data(JsonType::NaN, Span::new(at, at + 3)) }
-
     #[inline(always)]
     pub fn open_curly(at: usize) -> Self { Self::Punct(Punct::OpenCurly, Span::new(at, at + 1)) }
     #[inline(always)]
@@ -170,12 +266,6 @@ impl JsonToken {
     pub fn error(msg: impl Into<String>, start: usize, end: usize) -> Self { Self::Error(msg.into(), Span::new(start, end)) }
 }
 
-impl From<JsonToken> for Option<(JsonToken, Option<u8>,)> {
-    fn from(value: JsonToken) -> Self {
-        Some((value, None,))
-    }
-}
-
 impl From<JsonError> for JsonToken {
     fn from(value: JsonError) -> Self {
         JsonToken::Error(value.to_string(), value.span)
@@ -197,8 +287,6 @@ impl JsonToken {
         match &src[start..start + end] {
             "true"      => JsonToken::boolean(true, start),
             "false"     => JsonToken::boolean(false, start),
-            "undefined" => JsonToken::undefined(start),
-            x if x.eq_ignore_ascii_case("nan") => JsonToken::NaN(start),
             _           => JsonToken::ident(start, end),
         }
     }
@@ -230,10 +318,18 @@ impl <'p> JsonOutput<'p> {
     }
 
     #[inline]
-    pub(crate) fn parse_type<T: std::str::FromStr>(&self) -> Result<T> {
+    pub(crate) fn parse_type<T: std::str::FromStr>(&self) -> Result<T>
+        where T::Err: Display {
         let span = self.ast.as_ref().get_span();
         let slice = self.parser.take_slice(span.clone())?;
-        slice.parse::<T>().map_err(|_| JsonError::custom("cannot parse to this type", span))
+        slice.parse::<T>().map_err(|err| JsonError::custom(format!("{err}"), span))
+    }
+
+    #[inline]
+    pub(crate) fn parse_type_span<T: std::str::FromStr>(&self, span: Span) -> Result<T>
+        where T::Err: Display {
+        let slice = self.parser.take_slice(span.clone())?;
+        slice.parse::<T>().map_err(|err| JsonError::custom(format!("{err}"), span))
     }
 
     #[inline]
@@ -241,16 +337,19 @@ impl <'p> JsonOutput<'p> {
         self.parser.take_slice(self.ast.as_ref().get_span())
     }
 
+    #[inline]
+    pub fn to_slice_span(&self, span: Span) -> Result<&str> {
+        self.parser.take_slice(span)
+    }
+
     pub fn to_bytes(&self) -> &[u8] {
         match &self.ast {
             common::Holder::Owned(t) => self.parser.take_raw(t.get_span()), 
             common::Holder::Borrow(t) => self.parser.take_raw(t.get_span()),
         }
-        // self.parser.take_raw(self.ast)
     }
 }
 
-/////////////////////
 pub trait JsonKey: Hash {}
 
 #[derive(PartialEq, Eq, Hash, Default, Debug)]
@@ -319,12 +418,22 @@ pub enum JsonValue {
 }
 
 impl JsonValue {
+    #[inline]
     pub fn get_span(&self) -> Span {
         match self {
             Self::Object(JsonObject { span, .. }) => span.clone(),
             Self::Array(JsonArray { span, .. }) => span.clone(),
             Self::Data(JsonType::Str(_), span) => span.clone().collapse(1),
             Self::Data(_, span) => span.clone(),
+        }
+    }
+
+    #[inline(always)]
+    pub const fn get_type_name(&self) -> &str {
+        match self {
+            Self::Object(_) => "object",
+            Self::Array(_) => "array",
+            Self::Data(data_ty, __not_exist__) => data_ty.get_type_name()
         }
     }
 }
