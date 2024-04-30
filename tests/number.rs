@@ -175,6 +175,19 @@ fn hex() -> Result<()> {
 }
 
 #[test]
+fn keyword() -> Result<()> {
+    let mut obj = JsonParser::new("{ inf: Infinity, nan: NaN }");
+    let out = obj.parse()?;
+
+    assert_eq!(Ok(f32::INFINITY), out.index("inf").unwrap().parse_into::<f32>());
+    assert_eq!(Ok(f64::INFINITY), out.index("inf").unwrap().parse_into::<f64>());
+    assert!(out.index("nan").unwrap().parse_into::<f32>().is_ok_and(|it| it.is_nan()));
+    assert!(out.index("nan").unwrap().parse_into::<f64>().is_ok_and(|it| it.is_nan()));
+
+    Ok(())
+}
+
+#[test]
 fn hotspot() -> Result<()> {
     let mut obj = JsonParser::new(
     r#"{
@@ -192,6 +205,8 @@ fn hotspot() -> Result<()> {
         pos_expo: +1e10,
         neg_expo: -1e10,
         neg_expo_neg: -1e-10,
+        infinity: Infinity,
+        nan: NaN,
     }"#);
     let out = obj.parse()?;
 
@@ -212,7 +227,6 @@ fn hotspot() -> Result<()> {
     assert_eq!(Ok(0x20), out.index("hex").unwrap().parse_into::<i8>());
     assert_eq!(Ok(0x20), out.index("pos_hex").unwrap().parse_into::<i8>());
     assert_eq!(Ok(-0x20), out.index("neg_hex").unwrap().parse_into::<i8>());
-
 
     Ok(())
 }
