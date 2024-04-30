@@ -131,6 +131,53 @@ impl From<Heximal> for NumType {
     }
 }
 
+#[derive(PartialEq, PartialOrd, Debug, Clone)]
+pub enum Sign {
+    Plus,
+    Minus,
+    None,
+}
+
+impl Sign {
+    pub const fn detect(sign: u8) -> Self {
+        match sign {
+            43 => Self::Plus,
+            45 => Self::Minus,
+            _ => Self::None,
+        }
+    }
+
+    pub fn to_hexadecimal(&self, start: usize, end: usize) -> NumType {
+        match self {
+            Self::Plus => Heximal::Positive(Span::new(start - 1, end)).into(),
+            Self::Minus => Heximal::Negative(Span::new(start - 1, end)).into(),
+            _ => Heximal::Positive(Span::new(start, end)).into(),
+        }
+    }
+
+    pub fn to_integer(&self, start: usize, end: usize) -> NumType {
+        match self {
+            Self::Plus => Integer::Positive(Span::new(start - 1, end)).into(),
+            Self::Minus => Integer::Negative(Span::new(start - 1, end)).into(),
+            _ => Integer::Positive(Span::new(start, end)).into(),
+        }
+    }
+
+    pub fn to_decimal(&self, int_span: Option<Span>, frac_span: Option<Span>) -> NumType {
+        match self {
+            Self::Plus => Decimal::Positive(int_span.map(|mut sp| {
+                sp.start -= 1;
+                sp
+            }), frac_span).into(),
+            Self::Minus => Decimal::Negative(int_span.map(|mut sp| {
+                sp.start -= 1;
+                sp
+            }), frac_span).into(),
+            _ => Decimal::Positive(int_span, frac_span).into(),
+        }
+    }
+}
+
 impl StrType {
     pub(crate) fn parse_str<'a>(&'a self, parser: &'a JsonParser<Tokenizer<'a>>) -> Result<&'a str> {
         match self {
@@ -174,6 +221,8 @@ pub enum Punct {
     OpenCurly  ,
     CloseCurly ,
     WhiteSpace ,
+    Plus       ,
+    Minus      ,
 }
 
 #[derive(Default, PartialEq, Eq, PartialOrd, Hash, Clone, Debug)]
@@ -261,6 +310,10 @@ impl JsonToken {
     pub fn comma(at: usize) -> Self { Self::Punct(Punct::Comma, Span::new(at, at + 1)) }
     #[inline(always)]
     pub fn whitespace(at: usize, end: usize) -> Self { Self::Punct(Punct::WhiteSpace, Span::new(at, end)) }
+    #[inline(always)]
+    pub fn plus(at: usize, end: usize) -> Self { Self::Punct(Punct::Plus, Span::new(at, end)) }
+    #[inline(always)]
+    pub fn minus(at: usize, end: usize) -> Self { Self::Punct(Punct::Minus, Span::new(at, end)) }
 
     #[inline(always)]
     pub fn error(msg: impl Into<String>, start: usize, end: usize) -> Self { Self::Error(msg.into(), Span::new(start, end)) }

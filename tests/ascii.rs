@@ -8,7 +8,11 @@ fn escape_character() {
     println!("{}", b'\"');
     println!("{}",  std::str::from_utf8(&[b'\\']).unwrap());
 
-    println!("\u{62}")
+    println!("\u{62}");
+
+
+    println!("{}", b'+');
+    println!("{}", b'-');
 }
 
 #[test]
@@ -33,7 +37,9 @@ fn parse_decimal() {
     let dec = "0x1f";
     let int = "123";
     let decimal = ".3";
+    let minus_int = "-1";
 
     assert_eq!(Ok(31), i64::from_str_radix(&dec[2..], 16));
     assert_eq!(Ok(0.3), decimal.parse::<f32>());
+    assert_eq!(Ok(-1), minus_int.parse::<i8>());
 }
