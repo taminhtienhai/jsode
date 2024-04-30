@@ -66,6 +66,61 @@ fn usize() -> Result<()> {
 }
 
 #[test]
+fn i8() -> Result<()> {
+    let mut obj = JsonParser::new("{ min: -128, max: 127 }");
+    let out = obj.parse()?;
+
+    assert_eq!(Ok(i8::MIN), out.index("min").unwrap().parse_into::<i8>());
+    assert_eq!(Ok(i8::MAX), out.index("max").unwrap().parse_into::<i8>());
+
+    Ok(())
+}
+
+#[test]
+fn i16() -> Result<()> {
+    let mut obj = JsonParser::new("{ min: -32768, max: 32767 }");
+    let out = obj.parse()?;
+
+    assert_eq!(Ok(i16::MIN), out.index("min").unwrap().parse_into::<i16>());
+    assert_eq!(Ok(i16::MAX), out.index("max").unwrap().parse_into::<i16>());
+
+    Ok(())
+}
+
+#[test]
+fn i32() -> Result<()> {
+    let mut obj = JsonParser::new("{ min: -2147483648, max: 2147483647 }");
+    let out = obj.parse()?;
+
+    assert_eq!(Ok(i32::MIN), out.index("min").unwrap().parse_into::<i32>());
+    assert_eq!(Ok(i32::MAX), out.index("max").unwrap().parse_into::<i32>());
+
+    Ok(())
+}
+
+#[test]
+fn i64() -> Result<()> {
+    let mut obj = JsonParser::new("{ min: -9223372036854775808, max: 9223372036854775807 }");
+    let out = obj.parse()?;
+
+    assert_eq!(Ok(i64::MIN), out.index("min").unwrap().parse_into::<i64>());
+    assert_eq!(Ok(i64::MAX), out.index("max").unwrap().parse_into::<i64>());
+
+    Ok(())
+}
+
+#[test]
+fn isize() -> Result<()> {
+    let mut obj = JsonParser::new("{ min: -9223372036854775808, max: 9223372036854775807 }");
+    let out = obj.parse()?;
+
+    assert_eq!(Ok(isize::MIN), out.index("min").unwrap().parse_into::<isize>());
+    assert_eq!(Ok(isize::MAX), out.index("max").unwrap().parse_into::<isize>());
+
+    Ok(())
+}
+
+#[test]
 fn f32() -> Result<()> {
     let mut obj = JsonParser::new("{ zero: 0.0, random: 10.5, only_frac: .5 }");
     let out = obj.parse()?;

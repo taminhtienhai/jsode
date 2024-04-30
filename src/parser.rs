@@ -94,6 +94,23 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
             }
         }
     }
+
+    fn start_parse_array(&'tk mut self) -> Result<JsonOutput<'tk>, JsonError> {
+        let start = self.iter.prev_pos();
+        let mut items = Vec::<JsonProp<JsonInt>>::new();
+        let mut pos = 0;
+        loop {
+            let item = self.parse_arr_item(pos)?;
+            if let Some(it) = item {
+                pos += 1;
+                items.push(it);
+            } else {
+                let ast = JsonValue::Array(JsonArray::new(items, Span::new(start, self.iter.cur_pos())));
+                return Ok(JsonOutput::new(self, ast));
+            }
+        }
+    }
+
     // call this when reaching '{'
     fn parse_obj(&mut self) -> Result<JsonValue, JsonError> {
         let start = self.iter.prev_pos();
@@ -109,22 +126,6 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
                 props.insert(hashed_key, JsonProp::new(JsonStr(key.0.clone()), value));
             } else {
                 return Ok(JsonValue::Object(JsonObject::new(props, Span::new(start, self.iter.cur_pos()))))
-            }
-        }
-    }
-
-    fn start_parse_array(&'tk mut self) -> Result<JsonOutput<'tk>, JsonError> {
-        let start = self.iter.prev_pos();
-        let mut items = Vec::<JsonProp<JsonInt>>::new();
-        let mut pos = 0;
-        loop {
-            let item = self.parse_arr_item(pos)?;
-            if let Some(it) = item {
-                pos += 1;
-                items.push(it);
-            } else {
-                let ast = JsonValue::Array(JsonArray::new(items, Span::new(start, self.iter.cur_pos())));
-                return Ok(JsonOutput::new(self, ast));
             }
         }
     }
@@ -146,7 +147,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
     }
 
     fn parse_arr_item(&mut self, pos: usize) -> Result<Option<JsonProp<JsonInt>>, JsonError> {
-        let next_item = self.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace, _)));
+        let next_item = self.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace | Punct::Plus | Punct::Minus, _)));
         let item_value = match next_item {
             Some(JsonToken::Data(data, span)) => JsonValue::Data(data, span),
             Some(JsonToken::Punct(Punct::OpenCurly, _)) => self.parse_obj()?,
@@ -176,7 +177,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
             None => return Err(JsonError::custom("[parse_prop] `colon` should not be None", Span::default())),
         };
 
-        let value = match self.next_token() {
+        let value = match self.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::WhiteSpace | Punct::Plus | Punct::Minus, _))) {
             Some(JsonToken::Punct(Punct::OpenCurly, _)) => self.parse_obj()?,
             Some(JsonToken::Punct(Punct::OpenSquare, _)) => self.parse_array()?,
             Some(JsonToken::Data(JsonType::Str(str_value), data_span)) => JsonValue::Data(JsonType::Str(str_value), data_span),
