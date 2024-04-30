@@ -46,7 +46,7 @@ impl <'a> Tokenizer<'a> {
 
 
     #[inline]
-    pub fn take_raw(&self, span: Span) -> &[u8] {
+    pub const fn take_raw(&self, span: Span) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.ptr.add(span.start), span.gap()) }
     }
 
@@ -71,7 +71,7 @@ impl <'a> Tokenizer<'a> {
     }
 
     #[inline]
-    fn peek_prev_item(&self) -> Option<u8> {
+    const fn peek_prev_item(&self) -> Option<u8> {
         if self.pos > 0 {
             let prev_item = unsafe { ptr::read(self.ptr.add(self.pos - 2)) };
             Some(prev_item)
@@ -81,7 +81,7 @@ impl <'a> Tokenizer<'a> {
     }
 
     #[inline]
-    fn peek_next_item(&self) -> Option<u8> {
+    const fn peek_next_item(&self) -> Option<u8> {
         if self.pos >= self.size {
             None
         } else {

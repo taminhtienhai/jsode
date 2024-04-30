@@ -173,27 +173,28 @@ impl Sign {
         }
     }
 
-    pub fn to_hexadecimal(&self, prefix: Span, suffix: Span) -> NumType {
+    pub const fn to_hexadecimal(&self, prefix: Span, suffix: Span) -> NumType {
         match self {
-            Self::Plus => Heximal::Positive(prefix.expand_left(1), suffix).into(),
-            Self::Minus => Heximal::Negative(prefix.expand_left(1), suffix).into(),
-            _ => Heximal::Positive(prefix, suffix).into(),
+            Self::Plus => NumType::Hex(Heximal::Positive(prefix.expand_left(1), suffix)),
+            Self::Minus => NumType::Hex(Heximal::Negative(prefix.expand_left(1), suffix)),
+            _ => NumType::Hex(Heximal::Positive(prefix, suffix)),
         }
     }
 
-    pub fn to_integer(&self, start: usize, end: usize, expo_span: Option<Span>) -> NumType {
+    pub const fn to_integer(&self, start: usize, end: usize, expo_span: Option<Span>) -> NumType {
         match self {
-            Self::Plus => Integer::Positive(Span::new(start - 1, end), expo_span).into(),
-            Self::Minus => Integer::Negative(Span::new(start - 1, end), expo_span).into(),
-            _ => Integer::Positive(Span::new(start, end), expo_span).into(),
+            Self::Plus => NumType::Integer(Integer::Positive(Span::new(start - 1, end), expo_span)),
+            Self::Minus => NumType::Integer(Integer::Negative(Span::new(start - 1, end), expo_span)),
+            _ => NumType::Integer(Integer::Positive(Span::new(start, end), expo_span)),
         }
     }
 
-    pub fn to_decimal(&self, int_span: Option<Span>, frac_span: Option<Span>, expo_span: Option<Span>) -> NumType {
+    pub const fn to_decimal(&self, int_span: Option<Span>, frac_span: Option<Span>, expo_span: Option<Span>) -> NumType {
+        let new_int_span = if let Some(integer_span) = int_span { Some(integer_span.expand_left(1)) } else { None };
         match self {
-            Self::Plus => Decimal::Positive(int_span.map(|it| it.expand_left(1)), frac_span, expo_span).into(),
-            Self::Minus => Decimal::Negative(int_span.map(|it| it.expand_left(1)), frac_span, expo_span).into(),
-            _ => Decimal::Positive(int_span, frac_span, expo_span).into(),
+            Self::Plus => NumType::Decimal(Decimal::Positive(new_int_span, frac_span, expo_span)),
+            Self::Minus => NumType::Decimal(Decimal::Negative(new_int_span, frac_span, expo_span)),
+            _ => NumType::Decimal(Decimal::Positive(new_int_span, frac_span, expo_span)),
         }
     }
 }
@@ -255,52 +256,52 @@ pub struct Span {
 
 impl Span {
     #[inline(always)]
-    pub fn new(start: usize, end: usize) -> Self {
+    pub const fn new(start: usize, end: usize) -> Self {
         Self { start, end, col: 0, row: 0 }
     }
 
     #[inline(always)]
-    pub fn with_counter(start: usize, counter: usize) -> Self {
+    pub const fn with_counter(start: usize, counter: usize) -> Self {
         Self { start, end: start + counter, col: 0, row: 0 }
     }
 
     #[inline(always)]
-    pub fn gap(&self) -> usize {
+    pub const fn gap(&self) -> usize {
         self.end - self.start
     }
 
     #[inline]
-    pub fn extend(&self, other: Span) -> Self {
+    pub const fn extend(&self, other: Span) -> Self {
         Span::new(self.start, other.end)
     }
 
     #[inline(always)]
-    pub fn collapse(mut self, size: usize) -> Self {
+    pub const fn collapse(mut self, size: usize) -> Self {
         self.start += size;
         self.end -= size;
         self
     }
 
     #[inline(always)]
-    pub fn shrink_left(mut self, size: usize) -> Self {
+    pub const fn shrink_left(mut self, size: usize) -> Self {
         self.start += size;
         self
     }
 
     #[inline(always)]
-    pub fn shrink_right(mut self, size: usize) -> Self {
+    pub const fn shrink_right(mut self, size: usize) -> Self {
         self.end -= size;
         self
     }
 
     #[inline(always)]
-    pub fn expand_left(mut self, size: usize) -> Self {
+    pub const fn expand_left(mut self, size: usize) -> Self {
         self.start -= size;
         self
     }
 
     #[inline(always)]
-    pub fn expand_right(mut self, size: usize) -> Self {
+    pub const fn expand_right(mut self, size: usize) -> Self {
         self.end += size;
         self
     }
@@ -315,37 +316,37 @@ pub enum JsonToken {
 
 impl JsonToken {
     #[inline(always)]
-    pub fn ident(start: usize, end: usize) -> Self { Self::Data(JsonType::Ident, Span::new(start, end)) }
+    pub const fn ident(start: usize, end: usize) -> Self { Self::Data(JsonType::Ident, Span::new(start, end)) }
     #[inline(always)]
-    pub fn str(str_tokens: Vec<StrType>, start: usize, end: usize) -> Self { Self::Data(JsonType::Str(str_tokens), Span::new(start, end)) }
+    pub const fn str(str_tokens: Vec<StrType>, start: usize, end: usize) -> Self { Self::Data(JsonType::Str(str_tokens), Span::new(start, end)) }
     #[inline(always)]
-    pub fn number(ty: NumType, start: usize, end: usize) -> Self { Self::Data(JsonType::Num(ty), Span::new(start, end)) }
+    pub const fn number(ty: NumType, start: usize, end: usize) -> Self { Self::Data(JsonType::Num(ty), Span::new(start, end)) }
     #[inline(always)]
-    pub fn boolean(value: bool, start: usize) -> Self { Self::Data(JsonType::Bool(value), Span::new(start, start + if value { 4 } else { 5 })) }
+    pub const fn boolean(value: bool, start: usize) -> Self { Self::Data(JsonType::Bool(value), Span::new(start, start + if value { 4 } else { 5 })) }
     #[inline(always)]
-    pub fn null(at: usize) -> Self { Self::Data(JsonType::Null, Span::new(at, at + 1)) }
+    pub const fn null(at: usize) -> Self { Self::Data(JsonType::Null, Span::new(at, at + 1)) }
     #[inline(always)]
-    pub fn open_curly(at: usize) -> Self { Self::Punct(Punct::OpenCurly, Span::new(at, at + 1)) }
+    pub const fn open_curly(at: usize) -> Self { Self::Punct(Punct::OpenCurly, Span::new(at, at + 1)) }
     #[inline(always)]
-    pub fn close_curly(at: usize) -> Self { Self::Punct(Punct::CloseCurly, Span::new(at, at + 1)) }
+    pub const fn close_curly(at: usize) -> Self { Self::Punct(Punct::CloseCurly, Span::new(at, at + 1)) }
     #[inline(always)]
-    pub fn open_square(at: usize) -> Self { Self::Punct(Punct::OpenSquare, Span::new(at, at + 1)) }
+    pub const fn open_square(at: usize) -> Self { Self::Punct(Punct::OpenSquare, Span::new(at, at + 1)) }
     #[inline(always)]
-    pub fn close_square(at: usize) -> Self { Self::Punct(Punct::CloseSquare, Span::new(at, at + 1)) }
+    pub const fn close_square(at: usize) -> Self { Self::Punct(Punct::CloseSquare, Span::new(at, at + 1)) }
     #[inline(always)]
-    pub fn single_quote(at: usize) -> Self { Self::Punct(Punct::SingleQuote, Span::new(at, at + 1)) }
+    pub const fn single_quote(at: usize) -> Self { Self::Punct(Punct::SingleQuote, Span::new(at, at + 1)) }
     #[inline(always)]
-    pub fn double_quote(at: usize) -> Self { Self::Punct(Punct::DoubleQuote, Span::new(at, at + 1)) }
+    pub const fn double_quote(at: usize) -> Self { Self::Punct(Punct::DoubleQuote, Span::new(at, at + 1)) }
     #[inline(always)]
-    pub fn colon(at: usize) -> Self { Self::Punct(Punct::Colon, Span::new(at, at + 1)) }
+    pub const fn colon(at: usize) -> Self { Self::Punct(Punct::Colon, Span::new(at, at + 1)) }
     #[inline(always)]
-    pub fn comma(at: usize) -> Self { Self::Punct(Punct::Comma, Span::new(at, at + 1)) }
+    pub const fn comma(at: usize) -> Self { Self::Punct(Punct::Comma, Span::new(at, at + 1)) }
     #[inline(always)]
-    pub fn whitespace(at: usize, end: usize) -> Self { Self::Punct(Punct::WhiteSpace, Span::new(at, end)) }
+    pub const fn whitespace(at: usize, end: usize) -> Self { Self::Punct(Punct::WhiteSpace, Span::new(at, end)) }
     #[inline(always)]
-    pub fn plus(at: usize, end: usize) -> Self { Self::Punct(Punct::Plus, Span::new(at, end)) }
+    pub const fn plus(at: usize, end: usize) -> Self { Self::Punct(Punct::Plus, Span::new(at, end)) }
     #[inline(always)]
-    pub fn minus(at: usize, end: usize) -> Self { Self::Punct(Punct::Minus, Span::new(at, end)) }
+    pub const fn minus(at: usize, end: usize) -> Self { Self::Punct(Punct::Minus, Span::new(at, end)) }
 
     #[inline(always)]
     pub fn error(msg: impl Into<String>, start: usize, end: usize) -> Self { Self::Error(msg.into(), Span::new(start, end)) }
@@ -460,7 +461,7 @@ pub struct JsonProp<K: JsonKey> {
 }
 
 impl <K: JsonKey> JsonProp<K> {
-    pub fn new(k: K, v: JsonValue) -> Self {
+    pub const fn new(k: K, v: JsonValue) -> Self {
         Self { key: k, value: v }
     }
 }
@@ -472,7 +473,7 @@ pub struct JsonObject {
 }
 
 impl JsonObject {
-    pub fn new(properties: HashMap<u64, JsonProp<JsonStr>>, span: Span) -> Self {
+    pub const fn new(properties: HashMap<u64, JsonProp<JsonStr>>, span: Span) -> Self {
         Self {
             properties,
             span,
@@ -504,12 +505,12 @@ pub enum JsonValue {
 
 impl JsonValue {
     #[inline]
-    pub fn get_span(&self) -> Span {
+    pub const fn get_span(&self) -> Span {
         match self {
-            Self::Object(JsonObject { span, .. }) => span.clone(),
-            Self::Array(JsonArray { span, .. }) => span.clone(),
-            Self::Data(JsonType::Str(_), span) => span.clone().collapse(1),
-            Self::Data(_, span) => span.clone(),
+            Self::Object(JsonObject { span, .. }) => Span::new(span.start, span.end),
+            Self::Array(JsonArray { span, .. }) => Span::new(span.start, span.end),
+            Self::Data(JsonType::Str(_), span) => Span::new(span.start, span.end).collapse(1),
+            Self::Data(_, span) => Span::new(span.start, span.end),
         }
     }
 
