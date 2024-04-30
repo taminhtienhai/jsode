@@ -77,11 +77,10 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
 impl <'tk> JsonParser<Tokenizer<'tk>> {
     // call this when reaching '{'
     fn start_parse_obj(&'tk mut self) -> Result<JsonOutput<'tk>, JsonError> {
-        let start = self.iter.prev_pos();
+        let start = self.iter.cur_item_pos();
         let mut props = HashMap::<u64, JsonProp<JsonStr>>::new();
         loop {
-            let prop = self.parse_prop()?;
-            if let Some(JsonProp { key, value }) = prop {
+            if let Some(JsonProp { key, value }) = self.parse_prop()? {
                 let key_slice = self.take_slice(key.0.clone())?;
                 let hashed_key = common::hash_str(key_slice);
                 if props.contains_key(&hashed_key) {
@@ -89,14 +88,14 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
                 }
                 props.insert(hashed_key, JsonProp::new(JsonStr(key.0.clone()), value));
             } else {
-                let ast = JsonValue::Object(JsonObject::new(props, Span::new(start, self.iter.cur_pos())));
+                let ast = JsonValue::Object(JsonObject::new(props, Span::new(start, self.iter.next_item_pos())));
                 return Ok(JsonOutput::new(self, ast))
             }
         }
     }
 
     fn start_parse_array(&'tk mut self) -> Result<JsonOutput<'tk>, JsonError> {
-        let start = self.iter.prev_pos();
+        let start = self.iter.cur_item_pos();
         let mut items = Vec::<JsonProp<JsonInt>>::new();
         let mut pos = 0;
         loop {
@@ -105,7 +104,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
                 pos += 1;
                 items.push(it);
             } else {
-                let ast = JsonValue::Array(JsonArray::new(items, Span::new(start, self.iter.cur_pos())));
+                let ast = JsonValue::Array(JsonArray::new(items, Span::new(start, self.iter.next_item_pos())));
                 return Ok(JsonOutput::new(self, ast));
             }
         }
@@ -113,11 +112,10 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
 
     // call this when reaching '{'
     fn parse_obj(&mut self) -> Result<JsonValue, JsonError> {
-        let start = self.iter.prev_pos();
+        let start = self.iter.cur_item_pos();
         let mut props = HashMap::<u64, JsonProp<JsonStr>>::new();
         loop {
-            let prop = self.parse_prop()?;
-            if let Some(JsonProp { key, value }) = prop {
+            if let Some(JsonProp { key, value }) = self.parse_prop()? {
                 let key_slice = self.take_slice(key.0.clone())?;
                 let hashed_key = common::hash_str(key_slice);
                 if props.contains_key(&hashed_key) {
@@ -125,14 +123,14 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
                 }
                 props.insert(hashed_key, JsonProp::new(JsonStr(key.0.clone()), value));
             } else {
-                return Ok(JsonValue::Object(JsonObject::new(props, Span::new(start, self.iter.cur_pos()))))
+                return Ok(JsonValue::Object(JsonObject::new(props, Span::new(start, self.iter.next_item_pos()))))
             }
         }
     }
 
     // being call when reaching '['
     fn parse_array(&mut self) -> Result<JsonValue, JsonError> {
-        let start = self.iter.prev_pos();
+        let start = self.iter.cur_item_pos();
         let mut items = Vec::<JsonProp<JsonInt>>::new();
         let mut pos = 0;
         loop {
@@ -141,7 +139,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
                 pos += 1;
                 items.push(it);
             } else {
-                return Ok(JsonValue::Array(JsonArray::new(items, Span::new(start, self.iter.cur_pos()))));
+                return Ok(JsonValue::Array(JsonArray::new(items, Span::new(start, self.iter.next_item_pos()))));
             }
         }
     }

@@ -65,14 +65,17 @@ impl StrType {
 pub enum NumType {
     // 123
     // -123
+    // 123e10
+    // 123e+10
+    // 123e-10
     Integer(Integer),
     // 123.456
     // -123.456
-    // .456 = 0.456
+    // 12.3e456
+    // -12.3e-456
+    // .456
+    // 0.456e2
     Decimal(Decimal),
-    // 123e-456
-    // -123e-456
-    Exponential(Span),
     // 0xdecaf
     // -0xC0FFEE
     Hex(Heximal),
@@ -87,7 +90,6 @@ impl NumType {
         match self {
             Self::Integer(_) => "integer",
             Self::Decimal(_) => "decimal",
-            Self::Exponential(_) => "exponential",
             Self::Hex(_) => "hexadecimal",
             Self::Infinity(_) => "infinity",
             Self::NaN(_) => "NaN",
@@ -97,20 +99,30 @@ impl NumType {
 
 #[derive(PartialEq, PartialOrd, Debug, Clone)]
 pub enum Integer {
-    Positive(Span),
-    Negative(Span),
+    // given integer -123e-456
+    // 1: -123
+    // 2: -456 (exponent)
+    Positive(Span, Option<Span>),
+    Negative(Span, Option<Span>),
 }
 
 #[derive(PartialEq, PartialOrd, Debug, Clone)]
 pub enum Heximal {
-    Positive(Span),
-    Negative(Span),
+    // given hexa 0x2E
+    // 1: 0x
+    // 2: 2E
+    Positive(Span, Span),
+    Negative(Span, Span),
 }
 
 #[derive(PartialEq, PartialOrd, Debug, Clone)]
 pub enum Decimal {
-    Positive(Option<Span>, Option<Span>),
-    Negative(Option<Span>, Option<Span>),
+    // given decimal -123.456e-789
+    // 1: -123
+    // 2: 456 (fracment)
+    // 3: -789 (exponent)
+    Positive(Option<Span>, Option<Span>, Option<Span>),
+    Negative(Option<Span>, Option<Span>, Option<Span>),
 }
 
 impl From<Decimal> for NumType {
@@ -147,33 +159,41 @@ impl Sign {
         }
     }
 
-    pub fn to_hexadecimal(&self, start: usize, end: usize) -> NumType {
+    #[rustfmt::skip]
+    pub const fn compute_start_pos(&self, start: usize) -> usize {
+        // given a number ?123 (? is '+' or '-')
+        // if number has a prefix, move the position backward
         match self {
-            Self::Plus => Heximal::Positive(Span::new(start - 1, end)).into(),
-            Self::Minus => Heximal::Negative(Span::new(start - 1, end)).into(),
-            _ => Heximal::Positive(Span::new(start, end)).into(),
+            // +123
+            Self::Plus  => start - 1,
+            // -123
+            Self::Minus => start - 1,
+            // 123
+            _           => start,
         }
     }
 
-    pub fn to_integer(&self, start: usize, end: usize) -> NumType {
+    pub fn to_hexadecimal(&self, prefix: Span, suffix: Span) -> NumType {
         match self {
-            Self::Plus => Integer::Positive(Span::new(start - 1, end)).into(),
-            Self::Minus => Integer::Negative(Span::new(start - 1, end)).into(),
-            _ => Integer::Positive(Span::new(start, end)).into(),
+            Self::Plus => Heximal::Positive(prefix.expand_left(1), suffix).into(),
+            Self::Minus => Heximal::Negative(prefix.expand_left(1), suffix).into(),
+            _ => Heximal::Positive(prefix, suffix).into(),
         }
     }
 
-    pub fn to_decimal(&self, int_span: Option<Span>, frac_span: Option<Span>) -> NumType {
+    pub fn to_integer(&self, start: usize, end: usize, expo_span: Option<Span>) -> NumType {
         match self {
-            Self::Plus => Decimal::Positive(int_span.map(|mut sp| {
-                sp.start -= 1;
-                sp
-            }), frac_span).into(),
-            Self::Minus => Decimal::Negative(int_span.map(|mut sp| {
-                sp.start -= 1;
-                sp
-            }), frac_span).into(),
-            _ => Decimal::Positive(int_span, frac_span).into(),
+            Self::Plus => Integer::Positive(Span::new(start - 1, end), expo_span).into(),
+            Self::Minus => Integer::Negative(Span::new(start - 1, end), expo_span).into(),
+            _ => Integer::Positive(Span::new(start, end), expo_span).into(),
+        }
+    }
+
+    pub fn to_decimal(&self, int_span: Option<Span>, frac_span: Option<Span>, expo_span: Option<Span>) -> NumType {
+        match self {
+            Self::Plus => Decimal::Positive(int_span.map(|it| it.expand_left(1)), frac_span, expo_span).into(),
+            Self::Minus => Decimal::Negative(int_span.map(|it| it.expand_left(1)), frac_span, expo_span).into(),
+            _ => Decimal::Positive(int_span, frac_span, expo_span).into(),
         }
     }
 }
@@ -270,6 +290,18 @@ impl Span {
     #[inline(always)]
     pub fn shrink_right(mut self, size: usize) -> Self {
         self.end -= size;
+        self
+    }
+
+    #[inline(always)]
+    pub fn expand_left(mut self, size: usize) -> Self {
+        self.start -= size;
+        self
+    }
+
+    #[inline(always)]
+    pub fn expand_right(mut self, size: usize) -> Self {
+        self.end += size;
         self
     }
 }

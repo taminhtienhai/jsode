@@ -10,14 +10,17 @@ macro_rules! impl_unsigned_deserialization {
             fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
                 match &out.ast {
                     // positive number
-                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Positive(int_span))), _)) => out.parse_type_span::<$type>(int_span.clone()),
-                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Positive(int_span))), _)) => out.parse_type_span::<$type>(int_span.clone()),
+                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Positive(_,_))), int_span)) => out.parse_type_span::<$type>(int_span.clone()),
+                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Positive(_,_))), int_span)) => out.parse_type_span::<$type>(int_span.clone()),
                     // hexadecimal
-                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Hex(Heximal::Positive(hex_span))), _)) => out.to_slice_span(hex_span.clone().shrink_left(2)).and_then(|slice| <$type>::from_str_radix(slice,16).map_err(|err| JsonError::custom(err.to_string(), hex_span.clone()))),
-                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Hex(Heximal::Positive(hex_span))), _)) =>  out.to_slice_span(hex_span.clone().shrink_left(2)).and_then(|slice| <$type>::from_str_radix(slice,16).map_err(|err| JsonError::custom(err.to_string(), hex_span.clone()))),
-                    // [error] negative number
-                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Negative(int_span))), _)) => Err(JsonError::custom(format!("cannot convert negative number to {}", stringify!($type)), int_span.clone())),
-                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Negative(int_span))), _)) => Err(JsonError::custom(format!("cannot convert negative number to {}", stringify!($type)), int_span.clone())),
+                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Hex(Heximal::Positive(_, suffix))), hex_span)) => out.to_slice_span(suffix.clone()).and_then(|slice| <$type>::from_str_radix(slice,16).map_err(|err| JsonError::custom(err.to_string(), hex_span.clone()))),
+                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Hex(Heximal::Positive(_, suffix))), hex_span)) =>  out.to_slice_span(suffix.clone()).and_then(|slice| <$type>::from_str_radix(slice,16).map_err(|err| JsonError::custom(err.to_string(), hex_span.clone()))),
+                    // [error] negative integer
+                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Negative(_,_))), int_span)) => Err(JsonError::custom(format!("cannot convert negative integer to {}", stringify!($type)), int_span.clone())),
+                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Negative(_,_))), int_span)) => Err(JsonError::custom(format!("cannot convert negative integer to {}", stringify!($type)), int_span.clone())),
+                    // [error] negative hexa
+                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Hex(Heximal::Negative(_,_))), int_span)) => Err(JsonError::custom(format!("cannot convert negative hexadecimal to {}", stringify!($type)), int_span.clone())),
+                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Hex(Heximal::Negative(_,_))), int_span)) => Err(JsonError::custom(format!("cannot convert negative hexadecimal to {}", stringify!($type)), int_span.clone())),
                     // [error] other
                     common::Holder::Owned(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type {}", other_type.get_type_name(), stringify!($type)), other_type.get_span())),
                     common::Holder::Borrow(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type {}", other_type.get_type_name(), stringify!($type)), other_type.get_span())),
@@ -37,17 +40,17 @@ macro_rules! impl_signed_deserialization {
             fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
                 match &out.ast {
                     // positive integer
-                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Positive(int_span))), _)) => out.parse_type_span::<$type>(int_span.clone()),
-                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Positive(int_span))), _)) => out.parse_type_span::<$type>(int_span.clone()),
+                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Positive(_,_))), int_span)) => out.parse_type_span::<$type>(int_span.clone()),
+                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Positive(_,_))), int_span)) => out.parse_type_span::<$type>(int_span.clone()),
                     // negative integer
-                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Negative(int_span))), _)) => out.parse_type_span::<$type>(int_span.clone()),
-                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Negative(int_span))), _)) => out.parse_type_span::<$type>(int_span.clone()),
+                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Negative(_,_))), int_span)) => out.parse_type_span::<$type>(int_span.clone()),
+                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Negative(_,_))), int_span)) => out.parse_type_span::<$type>(int_span.clone()),
                     // positive hexadecimal
-                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Hex(Heximal::Positive(hex_span))), _)) => out.to_slice_span(hex_span.clone().shrink_left(2)).and_then(|slice| <$type>::from_str_radix(slice,16).map_err(|err| JsonError::custom(err.to_string(), hex_span.clone()))),
-                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Hex(Heximal::Positive(hex_span))), _)) =>  out.to_slice_span(hex_span.clone().shrink_left(2)).and_then(|slice| <$type>::from_str_radix(slice,16).map_err(|err| JsonError::custom(err.to_string(), hex_span.clone()))),
+                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Hex(Heximal::Positive(_, suffix))), hex_span)) => out.to_slice_span(suffix.clone()).and_then(|slice| <$type>::from_str_radix(slice,16).map_err(|err| JsonError::custom(err.to_string(), hex_span.clone()))),
+                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Hex(Heximal::Positive(_, suffix))), hex_span)) => out.to_slice_span(suffix.clone()).and_then(|slice| <$type>::from_str_radix(slice,16).map_err(|err| JsonError::custom(err.to_string(), hex_span.clone()))),
                     // negative hexadecimal
-                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Hex(Heximal::Negative(hex_span))), _)) => out.to_slice_span(hex_span.clone().shrink_left(2)).and_then(|slice| <$type>::from_str_radix(slice,16).map_err(|err| JsonError::custom(err.to_string(), hex_span.clone()))),
-                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Hex(Heximal::Negative(hex_span))), _)) =>  out.to_slice_span(hex_span.clone().shrink_left(2)).and_then(|slice| <$type>::from_str_radix(slice,16).map_err(|err| JsonError::custom(err.to_string(), hex_span.clone()))),
+                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Hex(Heximal::Negative(_, suffix))), hex_span)) => out.to_slice_span(suffix.clone()).and_then(|slice| <$type>::from_str_radix(slice,16).map(|it| -it).map_err(|err| JsonError::custom(err.to_string(), hex_span.clone()))),
+                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Hex(Heximal::Negative(_, suffix))), hex_span)) =>  out.to_slice_span(suffix.clone()).and_then(|slice| <$type>::from_str_radix(slice,16).map(|it| -it).map_err(|err| JsonError::custom(err.to_string(), hex_span.clone()))),
                     // [error] other
                     common::Holder::Owned(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type {}", other_type.get_type_name(), stringify!($type)), other_type.get_span())),
                     common::Holder::Borrow(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type {}", other_type.get_type_name(), stringify!($type)), other_type.get_span())),
@@ -61,30 +64,39 @@ macro_rules! impl_signed_deserialization {
     };
 }
 
+macro_rules! impl_float_deserialization {
+    ($type:ty) => {
+        impl Deserialize for $type {
+            fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
+                match &out.ast {
+                    // positive integer
+                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Positive(_,_))), int_span)) => out.parse_type_span::<$type>(int_span.clone()),
+                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Positive(_,_))), int_span)) => out.parse_type_span::<$type>(int_span.clone()),
+                    // negative integer
+                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Negative(_,_))), int_span)) => out.parse_type_span::<$type>(int_span.clone()),
+                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Integer(Integer::Negative(_,_))), int_span)) => out.parse_type_span::<$type>(int_span.clone()),
+                    // positive decimal
+                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Decimal(Decimal::Positive(_,_,_))), _)) => out.parse_type::<$type>(), 
+                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Decimal(Decimal::Positive(_,_,_))), _)) => out.parse_type::<$type>(),
+                    // negative decimal
+                    common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Decimal(Decimal::Negative(_,_,_))), _)) => out.parse_type::<$type>(),
+                    common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Decimal(Decimal::Negative(_,_,_))), _)) => out.parse_type::<$type>(),
+                    // other
+                    common::Holder::Owned(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type {}", other_type.get_type_name(), stringify!($type)), other_type.get_span())),
+                    common::Holder::Borrow(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type {}", other_type.get_type_name(), stringify!($type)), other_type.get_span())),
+                }
+            }
+        }
+    };
+    ($type:ty, $($types:ty),+) => {
+        impl_float_deserialization!($type);
+        impl_float_deserialization!($($types),+);
+    };
+}
+
 impl_unsigned_deserialization!(u8, u16, u32, u64, usize);
 impl_signed_deserialization!(i8, i16, i32, i64, isize);
-
-impl Deserialize for f32 {
-    fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
-        match &out.ast {
-            common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Decimal(_)), _)) => out.parse_type::<f32>(), 
-            common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Decimal(_)), _)) => out.parse_type::<f32>(),
-            common::Holder::Owned(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type f32", other_type.get_type_name()), other_type.get_span())),
-            common::Holder::Borrow(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type f32", other_type.get_type_name()), other_type.get_span())),
-        }
-    }
-}
-
-impl Deserialize for f64 {
-    fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
-        match &out.ast {
-            common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Decimal(_)), _)) => out.parse_type::<f64>(), 
-            common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Decimal(_)), _)) => out.parse_type::<f64>(),
-            common::Holder::Owned(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type f64", other_type.get_type_name()), other_type.get_span())),
-            common::Holder::Borrow(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type f64", other_type.get_type_name()), other_type.get_span())),
-        }
-    }
-}
+impl_float_deserialization!(f32, f64);
 
 impl Deserialize for String {
     fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
@@ -261,10 +273,10 @@ mod tests {
 
     #[test]
     fn parse_negative_number() -> crate::Result<()> {
-        // let mut obj = JsonParser::new(r"{ negative: -1 }");
-        // let out = obj.parse()?;
-
-        // assert!(out.index("negative").unwrap().parse_into::<u8>().inspect_err(|err| println!("{err:?}")).is_err());
+        let mut obj = JsonParser::new(r"{ negative: -1 }");
+        let out = obj.parse()?;
+        
+        assert!(out.index("negative").unwrap().parse_into::<u8>().inspect_err(|err| println!("{err:?}")).is_err());
 
         Ok(())
     }
