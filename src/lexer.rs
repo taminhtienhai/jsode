@@ -1,5 +1,5 @@
 use std::{marker::PhantomData, ptr};
-use crate::{constant, core::{Decimal, JsonToken, Sign, Span, StrType}, error::JsonError};
+use crate::{constant, core::{Decimal, JsonToken, NumType, Sign, Span, StrType}, error::JsonError};
 
 #[derive(PartialEq, Debug)]
 pub struct Tokenizer<'a> {
@@ -147,6 +147,8 @@ impl <'a> Tokenizer<'a> {
         std::str::from_utf8(buf).map(|res| match res {
             "true"      => JsonToken::boolean(true, start),
             "false"     => JsonToken::boolean(false, start),
+            "Infinity"  => JsonToken::number(NumType::Infinity(Span::new(start, self.pos)), start, self.pos),
+            "NaN"       => JsonToken::number(NumType::NaN(Span::new(start, self.pos)), start, self.pos),
             _           => JsonToken::ident(start, self.pos),
         }).unwrap_or_else(|err| JsonToken::error(err.to_string(), start, gap))
         

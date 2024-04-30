@@ -81,9 +81,21 @@ macro_rules! impl_float_deserialization {
                     // negative decimal
                     common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Decimal(Decimal::Negative(_,_,_))), _)) => out.parse_type::<$type>(),
                     common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::Decimal(Decimal::Negative(_,_,_))), _)) => out.parse_type::<$type>(),
+                    // keywords: Infinity | NaN
+                    // not sure why this pattern matching did not worked as expectation, but run smoothy after moving into to the final block
+                    // common::Holder::Owned(JsonValue::Data(JsonType::Num(NumType::Infinity(_)), _)) => Ok(<$type>::INFINITY),
+                    // common::Holder::Borrow(JsonValue::Data(JsonType::Num(NumType::NaN(_)), _)) => Ok(<$type>::NAN),
                     // other
-                    common::Holder::Owned(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type {}", other_type.get_type_name(), stringify!($type)), other_type.get_span())),
-                    common::Holder::Borrow(other_type) => Err(JsonError::custom(format!("cannot convert type {} to type {}", other_type.get_type_name(), stringify!($type)), other_type.get_span())),
+                    common::Holder::Owned(other_type) => match other_type {
+                        JsonValue::Data(JsonType::Num(NumType::Infinity(_)), _) => Ok(<$type>::INFINITY),
+                        JsonValue::Data(JsonType::Num(NumType::NaN(_)), _) => Ok(<$type>::NAN),
+                        _ => Err(JsonError::custom(format!("cannot convert type {} to type {}", other_type.get_type_name(), stringify!($type)), other_type.get_span())),
+                    },
+                    common::Holder::Borrow(other_type) => match other_type {
+                        JsonValue::Data(JsonType::Num(NumType::Infinity(_)), _) => Ok(<$type>::INFINITY),
+                        JsonValue::Data(JsonType::Num(NumType::NaN(_)), _) => Ok(<$type>::NAN),
+                        _ => Err(JsonError::custom(format!("cannot convert type {} to type {}", other_type.get_type_name(), stringify!($type)), other_type.get_span())),
+                    },
                 }
             }
         }
