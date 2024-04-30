@@ -1,5 +1,5 @@
 use std::{marker::PhantomData, ptr};
-use crate::{constant, core::{Decimal, Integer, JsonToken, Sign, Span, StrType}, error::JsonError};
+use crate::{constant, core::{Decimal, JsonToken, Sign, Span, StrType}, error::JsonError};
 
 #[derive(PartialEq, Debug)]
 pub struct Tokenizer<'a> {
@@ -30,12 +30,17 @@ impl <'a> Iterator for Tokenizer<'a> {
 
 impl <'a> Tokenizer<'a> {
     #[inline(always)]
-    pub fn prev_pos(&self) -> usize {
+    pub const fn prev_item_pos(&self) -> usize {
+        self.pos - 2
+    }
+
+    #[inline(always)]
+    pub const fn cur_item_pos(&self) -> usize {
         self.pos - 1
     }
 
     #[inline(always)]
-    pub fn cur_pos(&self) -> usize {
+    pub const fn next_item_pos(&self) -> usize {
         self.pos
     }
 
@@ -103,8 +108,9 @@ impl <'a> Tokenizer<'a> {
         Ok(())
     }
 
+    #[inline]
     fn next_until(&mut self, predicate: impl Fn(u8) -> bool) -> Span {
-        let start: usize = self.pos - 1;
+        let start: usize = self.pos;
         loop {
             let Some(next_item) = self.next_item() else {
                 break;
@@ -116,6 +122,18 @@ impl <'a> Tokenizer<'a> {
             }
         }
         Span::new(start, self.pos)
+    }
+
+    #[inline]
+    fn move_forward_then_consume_until(&mut self, skip: usize, predicate: impl Fn(u8) -> bool) -> Span {
+        self.pos += skip;
+        self.next_until(predicate)
+    }
+
+    #[inline]
+    fn move_backward_then_consume_until(&mut self, skip: usize, predicate: impl Fn(u8) -> bool) -> Span {
+        self.pos -= skip;
+        self.next_until(predicate)
     }
 
     #[inline(always)]
@@ -224,7 +242,7 @@ impl <'a> Tokenizer<'a> {
                     break JsonToken::str(str_tokens, at, self.pos).into()
                 }
 
-                let Span { start, end, .. } = self.next_until(|it| matches!(it, b'\\' | b'\''));
+                let Span { start, end, .. } = self.move_backward_then_consume_until(1, |it| matches!(it, b'\\' | b'\''));
                 str_tokens.push(StrType::Str(Span::new(start, end)));
             }},
             b'"' => { let mut str_tokens = Vec::<StrType>::new();  loop {
@@ -275,30 +293,10 @@ impl <'a> Tokenizer<'a> {
                     break JsonToken::str(str_tokens, at, self.pos).into()
                 }
 
-                let Span { start, end, .. } = self.next_until(|it| matches!(it, b'\\' | b'"'));
+                let Span { start, end, .. } = self.move_backward_then_consume_until(1, |it| matches!(it, b'\\' | b'"'));
                 str_tokens.push(StrType::Str(Span::new(start, end)));
             }},
             // negative number
-            // b'-' => {
-            //     let start: usize = self.pos;
-            //     let Some(next_item) = self.next_item() else {
-            //         return JsonToken::error("Invalid negative number, should following by at least a number", start, self.pos).into();
-            //     };
-
-            //     if next_item.eq(&b'0') {
-            //         if matches!(next_item, b'x' | b'X') {
-            //             let hex_span = self.next_until(|item| !item.is_ascii_hexdigit());
-            //             return Some((JsonToken::number(NumType::Hex(hex_span), at, self.pos), Some(next_item)));
-            //         }
-            //         return JsonToken::error("Invalid positive hexadecimal", start, self.pos).into();
-            //     }
-
-            //     if next_item.is_ascii_digit() {
-
-            //     }
-
-            //     return JsonToken::error("Invalid positive hexadecimal", start, self.pos).into();
-            // },
             b'-' | b'+' => {
                 let Some(next_it) = self.peek_next_item() else {
                     return JsonToken::error("Invalid number, '+' and '-' must follow by at least a digit", at, self.pos).into();
@@ -314,66 +312,66 @@ impl <'a> Tokenizer<'a> {
                     JsonToken::minus(at, self.pos).into()
                 }
             },
-            // positive hexadecimal
-            b'0' => {
-                let Some(sign) = self.peek_prev_item() else {
-                    return JsonToken::error("None sense when parsing number, must have at least one token behind", at, self.pos).into();
-                };
-                let Some(next_it) = self.next_item() else {
-                    return JsonToken::number(Sign::detect(sign).to_integer(at, self.pos), at, self.pos).into()
-                };
-                if matches!(next_it, b'x' | b'X') {
-                    let _ = self.next_until(|item| !item.is_ascii_hexdigit());
-                    if (self.pos - at) < 4 {
-                        JsonToken::error("Invalid hexadecimal, at least two hexdigit hehind 0x..", at, self.pos).into()
-                    } else {
-                        JsonToken::number(Sign::detect(sign).to_hexadecimal(at, self.pos), at, self.pos).into()
-                    }
-                } else if next_it.eq(&b'.') {
-                    let frac_span = self.next_until(|item| !item.is_ascii_alphanumeric());
-                    JsonToken::number(Sign::detect(sign).to_decimal(None, Some(frac_span)), at, self.pos).into()
-                } else if next_it.is_ascii_digit() {
-                    let _ = self.next_until(|item| !item.is_ascii_digit());
-                    JsonToken::error("Invalid integer, not allow number that start with '0'", at, self.pos).into()
-                } else {
-                    self.step_back();
-                    JsonToken::number(Sign::detect(sign).to_integer(at, self.pos), at, self.pos).into()
-                }
-            },
             b'.' => {
-                let frac_span = self.next_until(|item| !item.is_ascii_alphanumeric());
+                let frac_span = self.next_until(|item| !item.is_ascii_digit());
                 if frac_span.end != at {
-                    JsonToken::number(Decimal::Positive(None, Some(frac_span)).into(), at, self.pos).into()
+                    JsonToken::number(Decimal::Positive(None, Some(frac_span), None).into(), at, self.pos).into()
                 } else {
                     JsonToken::error("Invalid decimal fracment", at, self.pos).into()
                 }
             },
             // positive integer or decimal
-            b'1'..=b'9' => {
+            b'0'..=b'9' => {
                 let Some(sign) = self.peek_prev_item() else {
                     return JsonToken::error("None sense when parsing number, must have at least one token behind", at, self.pos).into();
                 };
-                let int_span = self.next_until(|item| !item.is_ascii_alphanumeric());
+                let inverse = Sign::detect(sign);
+                let start_at = inverse.compute_start_pos(at);
 
+                // handle hexadecimal
+                if next_item.eq(&b'0') && self.peek_next_item().is_some_and(|it| matches!(it, b'x' | b'X')) {
+                    let _ = self.move_forward_then_consume_until(1, |item| !item.is_ascii_hexdigit());
+                    if (self.pos - at) < 4 {
+                        return JsonToken::error("Invalid hexadecimal, at least two hexdigit hehind 0x..", start_at, self.pos).into()
+                    } else {
+                        return JsonToken::number(inverse.to_hexadecimal(Span::new(at, at + 2), Span::new(at + 2, self.pos)), start_at, self.pos).into()
+                    }
+                }
+
+                let int_span = self.move_backward_then_consume_until(1, |item| !item.is_ascii_digit());
                 let Some(next_item) = self.next_item() else {
-                    return JsonToken::number(Sign::detect(sign).to_integer(at, self.pos), at, self.pos).into();
+                    return JsonToken::number(inverse.to_integer(at, self.pos, None), start_at, self.pos).into();
                 };
 
                 // handle fractional
                 if next_item.eq(&b'.') {
-                    let dot_pos = self.pos;
-                    let frac_span = self.next_until(|item| !item.is_ascii_alphanumeric());
+                    let frac_span = self.next_until(|item| !item.is_ascii_digit());
 
-                    if frac_span.end != dot_pos {
-                        return JsonToken::number(Sign::detect(sign).to_decimal(Some(int_span), Some(frac_span)), at, self.pos).into();
+                    if frac_span.start != frac_span.end {
+                        if self.peek_next_item().is_some_and(|it| it.eq(&b'e')) {
+                            let expo_span = self.move_forward_then_consume_until(1, |item| !matches!(item, b'+' | b'-' | b'0'..=b'9'));
+                            if expo_span.start != expo_span.end {
+                                return JsonToken::number(inverse.to_decimal(Some(int_span), Some(frac_span), Some(expo_span)), start_at, self.pos).into();
+                            }
+                        }
+                        return JsonToken::number(inverse.to_decimal(Some(int_span), Some(frac_span), None), start_at, self.pos).into();
                     } else {
-                        return JsonToken::number(Sign::detect(sign).to_decimal(Some(int_span), None), at, self.pos).into();
+                        return JsonToken::number(inverse.to_decimal(Some(int_span), None, None), start_at, self.pos).into();
+                    }
+                }
+                // handle exponential
+                if next_item.eq(&b'e') {
+                    let expo_span = self.next_until(|item| !matches!(item, b'+' | b'-' | b'0'..=b'9'));
+
+                    if expo_span.start != expo_span.end {
+                        return JsonToken::number(inverse.to_integer(int_span.start, int_span.end, Some(expo_span)), start_at, self.pos).into();
+                    } else {
+                        return JsonToken::error("Invalid exponential number, exponent must contain at least one number",start_at, self.pos).into();
                     }
                 }
 
                 self.step_back();
-
-                JsonToken::number(Sign::detect(sign).to_integer(at, self.pos), at, self.pos).into()
+                JsonToken::number(inverse.to_integer(at, self.pos, None), start_at, self.pos).into()
             },
             // identity or keyword
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => loop {
@@ -394,6 +392,7 @@ impl <'a> Tokenizer<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::core::Integer;
     use super::*;
 
     #[test]
@@ -404,7 +403,7 @@ mod tests {
         assert_eq!(Some(JsonToken::whitespace(1,2)), tokens.next());
         assert_eq!(Some(JsonToken::ident(2, 5))    , tokens.next());
         assert_eq!(Some(JsonToken::colon(5))       , tokens.next());
-        assert_eq!(Some(JsonToken::number(Integer::Positive(Span::new(6,7)).into(), 6, 7)), tokens.next());
+        assert_eq!(Some(JsonToken::number(Integer::Positive(Span::new(6,7), None).into(), 6, 7)), tokens.next());
         assert_eq!(Some(JsonToken::whitespace(7,9)), tokens.next());
         assert_eq!(Some(JsonToken::close_curly(9)) , tokens.next());
         assert_eq!(None                            , tokens.next());
