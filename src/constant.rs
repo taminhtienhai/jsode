@@ -17,9 +17,9 @@ pub(crate) mod ascii {
     pub const SPACE: u8 = 0x20;
     pub const CARRIAGE_RETURN: u8 = 0x0D;
     pub const NON_BREAKING_SPACE: u8 = 0xA0;
-    // pub const PARAGRAPH_SEPARATOR: u8 = 0x2029;
-    // pub const LINE_SEPARATOR: u8 = b'\u{00A0}';
-    // pub const BYTE_ORDER_MARK: u8 = b'\u{FEFF}';
+    pub const PARAGRAPH_SEPARATOR: u16 = 0x2029;
+    pub const LINE_SEPARATOR: u16 = 0x2028;
+    pub const BYTE_ORDER_MARK: u16 = 0xFEFF;
 
     pub const ESCAPE: u8 = b'\\';
     pub const SINGLE_QUOTE: u8= b'\'';
