@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ops::SubAssign, ptr};
+use std::{marker::PhantomData, ptr};
 use jsode_macro::reflection;
 
 use crate::{constant, core::{Decimal, JsonToken, NumType, Sign, Span, StrType}, error::JsonError};
@@ -61,6 +61,8 @@ impl <'a> Tokenizer<'a> {
         }
     }
 
+    // SAFETY: as long as `self.pos` being control and not exceeding `self.size`
+    // 0 <= self.pos <= self.size
     #[inline]
     fn next_item(&mut self) -> Option<u8> {
         if self.pos >= self.size {
@@ -72,9 +74,11 @@ impl <'a> Tokenizer<'a> {
         }
     }
 
+    // SAFETY: 0 <= self.pos <= self.size
     #[inline]
     const fn peek_prev_item(&self) -> Option<u8> {
         if self.pos > 0 {
+            // subtract is sounded, program will panic if (self.pos - 2) < 0
             let prev_item = unsafe { ptr::read(self.ptr.add(self.pos - 2)) };
             Some(prev_item)
         } else {
@@ -92,11 +96,12 @@ impl <'a> Tokenizer<'a> {
         }
     }
 
+    // SAFETY: 0 <= self.pos <= self.size
     #[inline]
     const fn peek_next_nth_item(&self, n: usize) -> Option<u8> {
         // because `self.pos` is already present for next item position, so we must minus the `n` with `1` to make it correct.
         // if `n` equal 0, return item at `self.pos`
-        let nth_item_pos = n.saturating_sub(1);
+        let nth_item_pos = n - 1;
         if self.pos + nth_item_pos >= self.size {
             None
         } else {
@@ -112,13 +117,13 @@ impl <'a> Tokenizer<'a> {
             let Some(next_item) = self.next_item() else {
                 return Err(JsonError::custom(
                     format!("[{__fn_ident}] soon EOF, expect {n} token more"),
-                    Span::new(self.pos.saturating_sub(self.pos - n + 1), self.pos)));
+                    Span::new(self.pos - (self.pos - n + 1), self.pos)));
             };
 
             if !predicate(next_item) {
                 return Err(JsonError::custom(
                     format!("[{__fn_ident}] cannot satisfy condition"),
-                    Span::new(self.pos.saturating_sub(self.pos - n + 1), self.pos)))
+                    Span::new(self.pos - (self.pos - n + 1), self.pos)))
             }
         }
         Ok(())
@@ -166,19 +171,20 @@ impl <'a> Tokenizer<'a> {
 
     #[inline]
     fn move_forward_then_consume_until(&mut self, n: usize, predicate: impl Fn(u8) -> bool) -> Span {
-        self.pos += n;
+        self.pos = (self.pos + n).min(self.size);
         self.consume_until(predicate)
     }
 
     #[inline]
     fn move_backward_then_consume_until(&mut self, n: usize, predicate: impl Fn(u8) -> bool) -> Span {
+        // sounded
         self.pos -= n;
         self.consume_until(predicate)
     }
 
     #[inline(always)]
     fn step_back(&mut self) -> usize {
-        if self.pos < 1 { return self.pos; }
+        // sounded
         self.pos -= 1;
         self.pos
     }
@@ -448,7 +454,7 @@ impl <'a> Tokenizer<'a> {
                     return JsonToken::number(
                         // minus for the `expo_sign` which was computed in the previous step to include the sign ('+' | '-') in the final span
                         // if it exist
-                        inverse.to_integer(int_span.start, int_span.end, Some(Span::new(expo_start.saturating_sub(expo_sign), expo_end))),
+                        inverse.to_integer(int_span.start, int_span.end, Some(Span::new(expo_start - expo_sign, expo_end))),
                         start_at,
                         self.pos
                     ).into();
