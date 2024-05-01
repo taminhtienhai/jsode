@@ -80,6 +80,7 @@ fn sample3() -> Result<()> {
     Ok(())
 }
 
+// This test is taking from [JSON5 Spec](https://spec.json5.org/) > [1.2 Short Example](https://spec.json5.org/#short-example)
 #[test]
 fn sample5() -> Result<()> {
     let mut json = JsonParser::new(include_str!("../resources/valid/sample5.json5"));
@@ -88,9 +89,12 @@ fn sample5() -> Result<()> {
     assert_eq!(Ok("and you can quote me on that"), out.index("unquoted").unwrap().parse_into::<String>().as_deref());
     assert_eq!(Ok("I can use \"double quotes\" here"), out.index("singleQuotes").unwrap().parse_into::<String>().as_deref());
     assert_eq!(Ok("Look, Mom! \nNo \\n's!"), out.index("lineBreaks").unwrap().parse_into::<String>().as_deref());
+    assert_eq!(Ok("in objects"), out.index("trailingComma").unwrap().parse_into::<String>().as_deref());
     assert_eq!(Ok(vec!["arrays".to_string()]), out.index("andIn").unwrap().parse_into::<Vec<String>>());
-    // assert_eq!(Ok(912559), out.index("hexadecimal").unwrap().parse_into::<usize>());
-    // assert_eq!(Ok(8675309), out.index("andTrailing").unwrap().parse_into::<usize>());
+    assert_eq!(Ok(912559), out.index("hexadecimal").unwrap().parse_into::<usize>());
+    assert_eq!(Ok(8675309.), out.index("andTrailing").unwrap().parse_into::<f32>());
+    assert_eq!(Ok(1), out.index("positiveSign").unwrap().parse_into::<u8>());
+    assert_eq!(Ok(0.8675309), out.index("leadingDecimalPoint").unwrap().parse_into::<f64>());
     
     Ok(())
 }

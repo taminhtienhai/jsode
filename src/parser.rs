@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use jsode_macro::reflection;
+
 use crate::{common, constant::msg, core::{JsonArray, JsonInt, JsonObject, JsonOutput, JsonProp, JsonStr, JsonToken, JsonType, JsonValue, Punct, Span}, error::JsonError, lexer::Tokenizer};
 
 #[derive(PartialEq, Debug)]
@@ -76,6 +78,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
 
 impl <'tk> JsonParser<Tokenizer<'tk>> {
     // call this when reaching '{'
+    #[reflection]
     fn start_parse_obj(&'tk mut self) -> Result<JsonOutput<'tk>, JsonError> {
         let start = self.iter.cur_item_pos();
         let mut props = HashMap::<u64, JsonProp<JsonStr>>::new();
@@ -84,7 +87,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
                 let key_slice = self.take_slice(key.0.clone())?;
                 let hashed_key = common::hash_str(key_slice);
                 if props.contains_key(&hashed_key) {
-                    return Err(JsonError::custom(format!("{} `{}`", msg::DUPLICATE_KEY, key_slice), key.0))
+                    return Err(JsonError::custom(format!("[{__fn_ident}] {} `{}`", msg::DUPLICATE_KEY, key_slice), key.0))
                 }
                 props.insert(hashed_key, JsonProp::new(JsonStr(key.0.clone()), value));
             } else {
@@ -111,6 +114,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
     }
 
     // call this when reaching '{'
+    #[reflection]
     fn parse_obj(&mut self) -> Result<JsonValue, JsonError> {
         let start = self.iter.cur_item_pos();
         let mut props = HashMap::<u64, JsonProp<JsonStr>>::new();
@@ -119,7 +123,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
                 let key_slice = self.take_slice(key.0.clone())?;
                 let hashed_key = common::hash_str(key_slice);
                 if props.contains_key(&hashed_key) {
-                    return Err(JsonError::custom(format!("{} `{}`", msg::DUPLICATE_KEY, key_slice), key.0))
+                    return Err(JsonError::custom(format!("[{__fn_ident}] {} `{}`", msg::DUPLICATE_KEY, key_slice), key.0))
                 }
                 props.insert(hashed_key, JsonProp::new(JsonStr(key.0.clone()), value));
             } else {
@@ -144,45 +148,48 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
         }
     }
 
+    #[reflection]
     fn parse_arr_item(&mut self, pos: usize) -> Result<Option<JsonProp<JsonInt>>, JsonError> {
-        let next_item = self.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace | Punct::Plus | Punct::Minus, _)));
+        let next_item = self.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace | Punct::Plus | Punct::Minus, _) | JsonToken::Comment(_)));
         let item_value = match next_item {
             Some(JsonToken::Data(data, span)) => JsonValue::Data(data, span),
             Some(JsonToken::Punct(Punct::OpenCurly, _)) => self.parse_obj()?,
             Some(JsonToken::Punct(Punct::OpenSquare, _)) => self.parse_array()?,
             Some(JsonToken::Punct(Punct::CloseSquare, _)) => return Ok(None),
             Some(JsonToken::Punct(_, span)) => return Err(JsonError::invalid_array(span)),
-            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(err, span)),
-            None =>  return Err(JsonError::custom("[parse_arr_item] reaching None when parsing", Span::default()))
+            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(format!("[{__fn_ident}] {}", err), span)),
+            Some(JsonToken::Comment(span)) => return Err(JsonError::custom(format!("[{__fn_ident}] should not reaching this state, because all comments must be stripped all"), span)),
+            None =>  return Err(JsonError::custom(format!("[{__fn_ident}] reaching None when parsing"), Span::default()))
         };
         Ok(Some(JsonProp::new(JsonInt(pos), item_value)))
     }
 
+    #[reflection]
     fn parse_prop(&mut self) -> Result<Option<JsonProp<JsonStr>>, JsonError> {
-        let key_span = match self.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace, _))) {
+        let key_span = match self.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace, _) | JsonToken::Comment(_))) {
             Some(JsonToken::Data(JsonType::Str(_), span)) => span.collapse(1),
             Some(JsonToken::Data(JsonType::Ident, span)) => span,
             Some(JsonToken::Punct(Punct::CloseCurly, _)) => return Ok(None),
-            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(err, span)),
-            Some(tk) => return Err(JsonError::custom("[parse_prop] unexpected token when parsing key", tk.get_span())),
-            None => return Err(JsonError::custom("[parse_prop] `key` should not be None", Span::default())),
+            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(format!("[{__fn_ident}] {}", err), span)),
+            Some(tk) => return Err(JsonError::custom(format!("[{__fn_ident}] unexpected token when parsing key"), tk.get_span())),
+            None => return Err(JsonError::custom(format!("[{__fn_ident}] `key` should not be None"), Span::default())),
         };
 
         let _colon = match self.next_token() {
             Some(JsonToken::Punct(Punct::Colon, cspan)) => cspan,
-            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(err, span)),
-            Some(tk) => return Err(JsonError::custom("[parse_prop] unexpected token when parsing `colon`", tk.get_span())),
-            None => return Err(JsonError::custom("[parse_prop] `colon` should not be None", Span::default())),
+            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(format!("[{__fn_ident}] {}", err), span)),
+            Some(tk) => return Err(JsonError::custom(format!("[{__fn_ident}] unexpected token when parsing `colon`"), tk.get_span())),
+            None => return Err(JsonError::custom(format!("[{__fn_ident}] `colon` should not be None"), Span::default())),
         };
 
-        let value = match self.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::WhiteSpace | Punct::Plus | Punct::Minus, _))) {
+        let value = match self.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::WhiteSpace | Punct::Plus | Punct::Minus, _) | JsonToken::Comment(_))) {
             Some(JsonToken::Punct(Punct::OpenCurly, _)) => self.parse_obj()?,
             Some(JsonToken::Punct(Punct::OpenSquare, _)) => self.parse_array()?,
             Some(JsonToken::Data(JsonType::Str(str_value), data_span)) => JsonValue::Data(JsonType::Str(str_value), data_span),
             Some(JsonToken::Data(data, data_span)) => JsonValue::Data(data, data_span),
-            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(err, span)),
-            Some(tk) =>  return Err(JsonError::custom("[parse_prop] not able to parse this token", tk.get_span())),
-            None => return Err(JsonError::custom("[parse_prop] parsing prop value but reaching None", Span::default())),
+            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(format!("[{__fn_ident}] {}", err), span)),
+            Some(tk) =>  return Err(JsonError::custom(format!("[{__fn_ident}] not able to parse this token"), tk.get_span())),
+            None => return Err(JsonError::custom(format!("[{__fn_ident}] parsing prop value but reaching None"), Span::default())),
         };
 
         Ok(Some(JsonProp::new(JsonStr(key_span), value)))

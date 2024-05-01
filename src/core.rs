@@ -312,6 +312,7 @@ pub enum JsonToken {
     Punct(Punct, Span),
     Data(JsonType, Span),
     Error(String, Span),
+    Comment(Span),
 }
 
 impl JsonToken {
@@ -347,6 +348,8 @@ impl JsonToken {
     pub const fn plus(at: usize, end: usize) -> Self { Self::Punct(Punct::Plus, Span::new(at, end)) }
     #[inline(always)]
     pub const fn minus(at: usize, end: usize) -> Self { Self::Punct(Punct::Minus, Span::new(at, end)) }
+    #[inline(always)]
+    pub const fn comment(at: usize, end: usize) -> Self { Self::Comment(Span::new(at, end)) }
 
     #[inline(always)]
     pub fn error(msg: impl Into<String>, start: usize, end: usize) -> Self { Self::Error(msg.into(), Span::new(start, end)) }
@@ -355,16 +358,6 @@ impl JsonToken {
 impl From<JsonError> for JsonToken {
     fn from(value: JsonError) -> Self {
         JsonToken::Error(value.to_string(), value.span)
-    }
-}
-
-impl JsonToken {
-    pub fn size(&self) -> usize {
-        match self {
-            JsonToken::Data(_, Span { start, end, .. }) => end - start,
-            JsonToken::Punct(_, Span { start, end, .. }) => end - start,
-            JsonToken::Error(_, _) => 0,
-        }
     }
 }
 
@@ -382,6 +375,7 @@ impl JsonToken {
             Self::Data(_, span) => span.clone(),
             Self::Punct(_, span) => span.clone(),
             Self::Error(_, span) => span.clone(),
+            Self::Comment(span) => span.clone(),
         }
     }
 }

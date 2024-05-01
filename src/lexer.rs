@@ -1,4 +1,6 @@
-use std::{marker::PhantomData, ptr};
+use std::{marker::PhantomData, ops::SubAssign, ptr};
+use jsode_macro::reflection;
+
 use crate::{constant, core::{Decimal, JsonToken, NumType, Sign, Span, StrType}, error::JsonError};
 
 #[derive(PartialEq, Debug)]
@@ -91,25 +93,41 @@ impl <'a> Tokenizer<'a> {
     }
 
     #[inline]
+    const fn peek_next_nth_item(&self, n: usize) -> Option<u8> {
+        // because `self.pos` is already present for next item position, so we must minus the `n` with `1` to make it correct.
+        // if `n` equal 0, return item at `self.pos`
+        let nth_item_pos = n.saturating_sub(1);
+        if self.pos + nth_item_pos >= self.size {
+            None
+        } else {
+            let next_item = unsafe { ptr::read(self.ptr.add(self.pos + nth_item_pos)) };
+            Some(next_item)
+        }
+    }
+
+    #[inline]
+    #[reflection]
     fn next_exact_until(&mut self, size: usize, predicate: impl Fn(u8) -> bool) -> Result<(), JsonError> {
         for n in 0..size {
             let Some(next_item) = self.next_item() else {
                 return Err(JsonError::custom(
-                    format!("[next_exact_until] soon EOF, expect {n} token more"),
+                    format!("[{__fn_ident}] soon EOF, expect {n} token more"),
                     Span::new(self.pos.saturating_sub(self.pos - n + 1), self.pos)));
             };
 
             if !predicate(next_item) {
                 return Err(JsonError::custom(
-                    "[next_exact_until] cannot satisfy condition",
+                    format!("[{__fn_ident}] cannot satisfy condition"),
                     Span::new(self.pos.saturating_sub(self.pos - n + 1), self.pos)))
             }
         }
         Ok(())
     }
 
+    // iterate over `src` until reaching the **UNEXPECTED** token
+    // CAUTION: this method modify `self.pos` to avoid consume the **UNEXPECTED** token
     #[inline]
-    fn next_until(&mut self, predicate: impl Fn(u8) -> bool) -> Span {
+    fn consume_until(&mut self, predicate: impl Fn(u8) -> bool) -> Span {
         let start: usize = self.pos;
         loop {
             let Some(next_item) = self.next_item() else {
@@ -117,6 +135,8 @@ impl <'a> Tokenizer<'a> {
             };
 
             if predicate(next_item) {
+                // the cursor is pointing into `next_item` (UNEXPECTED token),
+                // move the cursor backward to unconsume it.
                 self.step_back();
                 break;
             }
@@ -124,21 +144,50 @@ impl <'a> Tokenizer<'a> {
         Span::new(start, self.pos)
     }
 
+    // iterate over `src` until reaching **EXPECTED** token
+    // CAUTION: this method modify `self.pos` to consume all **EXPECTED** tokens
     #[inline]
-    fn move_forward_then_consume_until(&mut self, skip: usize, predicate: impl Fn(u8) -> bool) -> Span {
-        self.pos += skip;
-        self.next_until(predicate)
+    fn consume_pair_until(&mut self, predicate: impl Fn(u8,u8) -> bool) -> Span {
+        let start: usize = self.pos;
+        loop {
+            let (Some(first_item), Some(second_item)) = (self.next_item(), self.peek_next_item()) else {
+                break;
+            };
+
+            if predicate(first_item, second_item) {
+                // the cursor is pointing into `second_item`,
+                // move the cursor forward to consume it.
+                self.step_front();
+                break;
+            }
+        }
+        Span::new(start, self.pos)
     }
 
     #[inline]
-    fn move_backward_then_consume_until(&mut self, skip: usize, predicate: impl Fn(u8) -> bool) -> Span {
-        self.pos -= skip;
-        self.next_until(predicate)
+    fn move_forward_then_consume_until(&mut self, n: usize, predicate: impl Fn(u8) -> bool) -> Span {
+        self.pos += n;
+        self.consume_until(predicate)
+    }
+
+    #[inline]
+    fn move_backward_then_consume_until(&mut self, n: usize, predicate: impl Fn(u8) -> bool) -> Span {
+        self.pos -= n;
+        self.consume_until(predicate)
     }
 
     #[inline(always)]
-    fn step_back(&mut self) {
+    fn step_back(&mut self) -> usize {
+        if self.pos < 1 { return self.pos; }
         self.pos -= 1;
+        self.pos
+    }
+    
+    #[inline(always)]
+    fn step_front(&mut self) -> usize {
+        if self.pos >= self.size { return self.pos; }
+        self.pos += 1;
+        self.pos
     }
 
     fn parse_keyword(&self, start: usize) -> JsonToken {
@@ -195,6 +244,24 @@ impl <'a> Tokenizer<'a> {
             b']' => JsonToken::close_square(at).into(),
             b':' => JsonToken::colon(at).into(),
             b',' => JsonToken::comma(at).into(),
+            // comment
+            b'/' => {
+                let Some(next_item) = self.next_item() else {
+                    return JsonToken::error("Invalid comment, must follow by another '/' (single-line comment) or '*' (multi-line comment)", at, self.pos).into();
+                };
+                // single-line comment
+                if next_item.eq(&b'/') {
+                    let _ = self.consume_until(|it| it.eq(&b'\n'));
+                    return JsonToken::comment(at, self.pos).into();
+                }
+                // multi-line comment
+                if next_item.eq(&b'*') {
+                    let _ = self.consume_pair_until(|f,s| f.eq(&b'*') && s.eq(&b'/'));
+                    return JsonToken::comment(at, self.pos).into();
+                }
+
+                JsonToken::error("Invalid comment, must follow by another '/' (single-line comment) or '*' (multi-line comment)", at, self.pos).into()
+            },
             // string and literal
             b'\'' => { let mut str_tokens = Vec::<StrType>::new(); loop {
                 // parse all character wrapped inside single quote
@@ -315,7 +382,8 @@ impl <'a> Tokenizer<'a> {
                 }
             },
             b'.' => {
-                let frac_span = self.next_until(|item| !item.is_ascii_digit());
+                // consume until reaching a non-digit character
+                let frac_span = self.consume_until(|item| !item.is_ascii_digit());
                 if frac_span.end != at {
                     JsonToken::number(Decimal::Positive(None, Some(frac_span), None).into(), at, self.pos).into()
                 } else {
@@ -347,7 +415,8 @@ impl <'a> Tokenizer<'a> {
 
                 // handle fractional
                 if next_item.eq(&b'.') {
-                    let frac_span = self.next_until(|item| !item.is_ascii_digit());
+                    // consume until reaching a non-digit character
+                    let frac_span = self.consume_until(|item| !item.is_ascii_digit());
 
                     if frac_span.start != frac_span.end {
                         if self.peek_next_item().is_some_and(|it| it.eq(&b'e')) {
@@ -363,13 +432,26 @@ impl <'a> Tokenizer<'a> {
                 }
                 // handle exponential
                 if next_item.eq(&b'e') {
-                    let expo_span = self.next_until(|item| !matches!(item, b'+' | b'-' | b'0'..=b'9'));
+                    // if exponent has a sign ('+' | '-') and follow by a digit. Move cursor to the next position and return 1.
+                    // if exponent has only digits, return 0 instead.
+                    // otherwise not a valid exponent
+                    let expo_sign: usize = match self.peek_next_item() {
+                        Some(b'+' | b'-') if self.peek_next_nth_item(2).is_some_and(|it| it.is_ascii_digit()) => {
+                            self.step_front();
+                            1
+                        },
+                        Some(n_n_it) if n_n_it.is_ascii_digit() => 0,
+                        _ => return JsonToken::error("Invalid exponential number, exponent must contain at least one number", start_at, self.pos).into(),
+                    };
+                    let Span { start: expo_start, end: expo_end, .. } = self.consume_until(|item| !item.is_ascii_digit());
 
-                    if expo_span.start != expo_span.end {
-                        return JsonToken::number(inverse.to_integer(int_span.start, int_span.end, Some(expo_span)), start_at, self.pos).into();
-                    } else {
-                        return JsonToken::error("Invalid exponential number, exponent must contain at least one number",start_at, self.pos).into();
-                    }
+                    return JsonToken::number(
+                        // minus for the `expo_sign` which was computed in the previous step to include the sign ('+' | '-') in the final span
+                        // if it exist
+                        inverse.to_integer(int_span.start, int_span.end, Some(Span::new(expo_start.saturating_sub(expo_sign), expo_end))),
+                        start_at,
+                        self.pos
+                    ).into();
                 }
 
                 self.step_back();
