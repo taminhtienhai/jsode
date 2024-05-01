@@ -370,12 +370,12 @@ impl JsonToken {
         }
     }
 
-    pub fn get_span(&self) -> Span {
+    pub const fn get_span(&self) -> Span {
         match self {
-            Self::Data(_, span) => span.clone(),
-            Self::Punct(_, span) => span.clone(),
-            Self::Error(_, span) => span.clone(),
-            Self::Comment(span) => span.clone(),
+            Self::Data(_, span) => Span::new(span.start, span.end),
+            Self::Punct(_, span) => Span::new(span.start, span.end),
+            Self::Error(_, span) => Span::new(span.start, span.end),
+            Self::Comment(span) => Span::new(span.start, span.end),
         }
     }
 }
@@ -422,7 +422,7 @@ impl <'p> JsonOutput<'p> {
         self.parser.take_slice(span)
     }
 
-    pub fn to_bytes(&self) -> &[u8] {
+    pub const fn to_bytes(&self) -> &[u8] {
         match &self.ast {
             common::Holder::Owned(t) => self.parser.take_raw(t.get_span()), 
             common::Holder::Borrow(t) => self.parser.take_raw(t.get_span()),

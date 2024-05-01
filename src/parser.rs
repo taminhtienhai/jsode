@@ -43,7 +43,7 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
 impl <'tk> JsonParser<Tokenizer<'tk>> {
 
     #[inline]
-    pub fn take_raw(&self, span: Span) -> &[u8] {
+    pub const fn take_raw(&self, span: Span) -> &[u8] {
         self.iter.take_raw(span)
     }
 
