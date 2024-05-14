@@ -1,47 +1,70 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use jsode_macro::reflection;
 
-use crate::{common, constant::msg, core::{JsonArray, JsonInt, JsonObject, JsonOutput, JsonProp, JsonStr, JsonToken, JsonType, JsonValue, Punct, Span}, error::JsonError, lexer::Tokenizer};
+use crate::{
+    common,
+    core::{
+        JsonBlock, JsonOutput, JsonToken,
+        JsonType, JsonValue, Punct, Span,
+    },
+    error::JsonError,
+    lexer::Tokenizer,
+};
 
 #[derive(PartialEq, Debug)]
-pub struct JsonParser<Iter: Iterator<Item = JsonToken>> {
-    iter: Iter,
+pub struct JsonParser<'tk> {
+    iter: Tokenizer<'tk>,
 }
 
-impl <'tk> From<Tokenizer<'tk>> for JsonParser<Tokenizer<'tk>> {
-    fn from(value: Tokenizer<'tk>) -> Self {
-        Self {
-            iter: value,
-        }
-    }
-}
-
-impl <'par> JsonParser<Tokenizer<'par>> {
+impl<'tk> JsonParser<'tk> {
     #[inline]
-    pub fn new(src: &'par str) -> Self {
+    pub fn new(src: &'tk str) -> Self {
         Self {
             iter: Tokenizer::from(src),
         }
     }
 }
 
-impl <'tk> JsonParser<Tokenizer<'tk>> {
-    pub fn parse(&'tk mut self) -> core::result::Result<JsonOutput, JsonError> {
-        while let Some(next_token) = self.iter.next() {
-            match next_token {
-                JsonToken::Punct(Punct::OpenCurly, _) => return self.start_parse_obj(),
-                JsonToken::Punct(Punct::OpenSquare, _) => return self.start_parse_array(),
-                _ => return Err(JsonError::missing_double_colon(next_token.get_span())),
-            };
+impl<'tk> JsonParser<'tk> {
+    pub fn parse(&'_ mut self) -> crate::Result<JsonOutput<'_>> {
+        let mut cursor = JsonCursor::init(self)?;
+
+        let init_block = match cursor.roots.back() {
+            Some(State::Object(_, _)) => JsonBlock::new(0, JsonValue::Object(HashMap::new(), Span::default())),
+            Some(State::Array(_, _)) => JsonBlock::new(0, JsonValue::Array(Vec::new(), Span::default())),
+            // Some(State::Value)       => JsonBlock::new(0, JsonValue::Value(Json)),
+            _ => return Err(JsonError::custom("Invalid JSON", Span::default())),
         };
-        Err(JsonError::missing_double_colon(Span::default()))
+        cursor.level += 1;
+
+        let mut ast = Vec::<JsonBlock>::from_iter([init_block]);
+
+        while !self.iter.is_end() {
+            let Some(block) = match cursor.roots.back() {
+                Some(State::Object(_, _)) => cursor.parse_object_prop(self, ast.as_mut()),
+                Some(State::Array(_, _)) => cursor.parse_array_item(self, ast.as_mut()),
+                Some(State::Value) => cursor.parse_value(self),
+                None => if self.iter.is_end() {
+                    break;
+                } else {
+                    return Err(JsonError::custom("Soon EOF", Span::default()));
+                },
+            }? else {
+                // reaching close-curly ('}') or close-bracket (']')
+                // at this state, only inner value of cursor need to be changed
+                // continue parsing
+                continue;
+            };
+
+            ast.push(block);
+        }
+
+        Ok(JsonOutput::new(self, ast))
     }
 }
 
-
-impl <'tk> JsonParser<Tokenizer<'tk>> {
-
+impl<'tk> JsonParser<'tk> {
     #[inline]
     pub const fn take_raw(&self, span: Span) -> &[u8] {
         self.iter.take_raw(span)
@@ -76,186 +99,291 @@ impl <'tk> JsonParser<Tokenizer<'tk>> {
     }
 }
 
-impl <'tk> JsonParser<Tokenizer<'tk>> {
-    // call this when reaching '{'
-    #[reflection]
-    fn start_parse_obj(&'tk mut self) -> Result<JsonOutput<'tk>, JsonError> {
-        let start = self.iter.cur_item_pos();
-        let mut props = HashMap::<u64, JsonProp<JsonStr>>::new();
-        loop {
-            if let Some(JsonProp { key, value }) = self.parse_prop()? {
-                let key_slice = self.take_slice(key.0.clone())?;
-                let hashed_key = common::hash_str(key_slice);
-                if props.contains_key(&hashed_key) {
-                    return Err(JsonError::custom(format!("[{__fn_ident}] {} `{}`", msg::DUPLICATE_KEY, key_slice), key.0))
-                }
-                props.insert(hashed_key, JsonProp::new(JsonStr(key.0.clone()), value));
-            } else {
-                let ast = JsonValue::Object(JsonObject::new(props, Span::new(start, self.iter.next_item_pos())));
-                return Ok(JsonOutput::new(self, ast))
-            }
+// state represent for the parent's type
+#[derive(Debug)]
+pub(crate) enum State {
+    // the `usize` is the position in ast
+    // the `HashMap` is indexes of their children
+    // everytime a new property parsed successfully, `HashMap` will inserted a new key-value
+    Object(usize, HashMap<usize, usize>),
+    // the first `usize` is the position in ast,
+    // the second `Vec<usize>` are position of each item
+    // everytime a new item parsed successfully, second `usize` will increased by one
+    Array(usize, Vec<usize>),
+    // Prop,
+    Value,
+    // EOF,
+}
+
+#[derive(Debug)]
+pub(crate) struct JsonCursor {
+    level: usize,
+    roots: VecDeque<State>,
+}
+
+impl JsonCursor {
+    pub fn new(state: State) -> Self {
+        Self {
+            level: 0,
+            roots: VecDeque::from_iter([state]),
         }
     }
 
-    fn start_parse_array(&'tk mut self) -> Result<JsonOutput<'tk>, JsonError> {
-        let start = self.iter.cur_item_pos();
-        let mut items = Vec::<JsonProp<JsonInt>>::new();
-        let mut pos = 0;
-        loop {
-            let item = self.parse_arr_item(pos)?;
-            if let Some(it) = item {
-                pos += 1;
-                items.push(it);
-            } else {
-                let ast = JsonValue::Array(JsonArray::new(items, Span::new(start, self.iter.next_item_pos())));
-                return Ok(JsonOutput::new(self, ast));
-            }
-        }
+    /// going up a level
+    /// pop back latest state out of stack
+    fn pop_state(&mut self) -> Option<State> {
+        self.level = self.level.saturating_sub(1);
+        self.roots.pop_back()
     }
 
-    // call this when reaching '{'
+    /// add new prop's index to PARENT
+    /// note: PARENT should be an object
+    #[inline]
     #[reflection]
-    fn parse_obj(&mut self) -> Result<JsonValue, JsonError> {
-        let start = self.iter.cur_item_pos();
-        let mut props = HashMap::<u64, JsonProp<JsonStr>>::new();
-        loop {
-            if let Some(JsonProp { key, value }) = self.parse_prop()? {
-                let key_slice = self.take_slice(key.0.clone())?;
-                let hashed_key = common::hash_str(key_slice);
-                if props.contains_key(&hashed_key) {
-                    return Err(JsonError::custom(format!("[{__fn_ident}] {} `{}`", msg::DUPLICATE_KEY, key_slice), key.0))
-                }
-                props.insert(hashed_key, JsonProp::new(JsonStr(key.0.clone()), value));
-            } else {
-                return Ok(JsonValue::Object(JsonObject::new(props, Span::new(start, self.iter.next_item_pos()))))
-            }
-        }
-    }
-
-    // being call when reaching '['
-    fn parse_array(&mut self) -> Result<JsonValue, JsonError> {
-        let start = self.iter.cur_item_pos();
-        let mut items = Vec::<JsonProp<JsonInt>>::new();
-        let mut pos = 0;
-        loop {
-            let item = self.parse_arr_item(pos)?;
-            if let Some(it) = item {
-                pos += 1;
-                items.push(it);
-            } else {
-                return Ok(JsonValue::Array(JsonArray::new(items, Span::new(start, self.iter.next_item_pos()))));
-            }
-        }
-    }
-
-    #[reflection]
-    fn parse_arr_item(&mut self, pos: usize) -> Result<Option<JsonProp<JsonInt>>, JsonError> {
-        let next_item = self.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace | Punct::Plus | Punct::Minus, _) | JsonToken::Comment(_)));
-        let item_value = match next_item {
-            Some(JsonToken::Data(data, span)) => JsonValue::Data(data, span),
-            Some(JsonToken::Punct(Punct::OpenCurly, _)) => self.parse_obj()?,
-            Some(JsonToken::Punct(Punct::OpenSquare, _)) => self.parse_array()?,
-            Some(JsonToken::Punct(Punct::CloseSquare, _)) => return Ok(None),
-            Some(JsonToken::Punct(_, span)) => return Err(JsonError::invalid_array(span)),
-            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(format!("[{__fn_ident}] {}", err), span)),
-            Some(JsonToken::Comment(span)) => return Err(JsonError::custom(format!("[{__fn_ident}] should not reaching this state, because all comments must be stripped all"), span)),
-            None =>  return Err(JsonError::custom(format!("[{__fn_ident}] reaching None when parsing"), Span::default()))
+    fn update_prop_index(&mut self, key: Span, parser: &JsonParser<'_>, block_pos: usize) -> crate::Result<()> {
+        let Some(State::Object(anchor, ref mut prop_indexes)) = self.roots.back_mut() else {
+            return Err(JsonError::custom(format!("[{__fn_ident}] No more state in stack, soon EOS"), Span::default()));
         };
-        Ok(Some(JsonProp::new(JsonInt(pos), item_value)))
+        // insert new item to object indexes
+        let key_slice = parser.take_slice(key)?;
+        let key_hashed = common::hash_str(key_slice) as usize;
+        // we should use relative instead absolute position here
+        // because lately when we index value, the origin size of ast is hard to trace
+        prop_indexes.insert(key_hashed, block_pos - *anchor);
+
+        Ok(())
+    }
+
+    /// increase PARENT length by 1
+    /// note: PARENT should be an array
+    #[inline]
+    #[reflection]
+    fn update_array_length(&mut self, pos: usize) -> crate::Result<()> {
+        let Some(State::Array(anchor, ref mut item_indexes)) = self.roots.back_mut() else {
+            return Err(JsonError::custom(format!("[{__fn_ident}] No more state in stack, soon EOS"), Span::default()));
+        };
+        // push array's item related position
+        item_indexes.push(pos - *anchor);
+
+        Ok(())
+    }
+
+    #[inline]
+    fn create_object_block(&mut self, position: usize, span: Span) -> JsonBlock {
+        let block = JsonBlock {
+            level: self.level,
+            value: JsonValue::Object(HashMap::new(), span),
+        };
+        self.level += 1;
+        self.roots.push_back(State::Object(position, HashMap::new()));
+        block
+    }
+
+    #[inline]
+    fn create_array_block(&mut self, position: usize, span: Span) -> JsonBlock {
+        let block = JsonBlock {
+            level: self.level,
+            value: JsonValue::Array(Vec::new(), span),
+        };
+        self.level += 1;
+        self.roots.push_back(State::Array(position, Vec::new()));
+        block
     }
 
     #[reflection]
-    fn parse_prop(&mut self) -> Result<Option<JsonProp<JsonStr>>, JsonError> {
-        let key_span = match self.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace, _) | JsonToken::Comment(_))) {
-            Some(JsonToken::Data(JsonType::Str(_), span)) => span.collapse(1),
-            Some(JsonToken::Data(JsonType::Ident, span)) => span,
-            Some(JsonToken::Punct(Punct::CloseCurly, _)) => return Ok(None),
-            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(format!("[{__fn_ident}] {}", err), span)),
-            Some(tk) => return Err(JsonError::custom(format!("[{__fn_ident}] unexpected token when parsing key"), tk.get_span())),
-            None => return Err(JsonError::custom(format!("[{__fn_ident}] `key` should not be None"), Span::default())),
+    fn create_prop_block(&mut self, key: Span, value: JsonType, value_span: Span, parser: &JsonParser<'_>, block_pos: usize) -> crate::Result<JsonBlock> {
+        let Some(State::Object(anchor, ref mut prop_indexes)) = self.roots.back_mut() else {
+            return Err(JsonError::custom(format!("[{__fn_ident}] No more state in stack, soon EOS"), Span::default()));
+        };
+        // insert new item to object indexes
+        let key_slice = parser.take_slice(key.clone())?;
+        let key_hashed = common::hash_str(key_slice) as usize;
+
+        prop_indexes.insert(key_hashed, block_pos - *anchor);
+
+        Ok(JsonBlock {
+            level: self.level,
+            value: JsonValue::Prop(value, value_span.clone(), key.extend(value_span)),
+        })
+    }
+
+    #[reflection]
+    fn create_item_block(&mut self, pos: usize, value: JsonType, value_span: Span) -> crate::Result<JsonBlock> {
+        let Some(State::Array(anchor, ref mut item_indexes)) = self.roots.back_mut() else {
+            return Err(JsonError::custom(format!("[{__fn_ident}] No more state in stack, soon EOS"), Span::default()));
+        };
+        // increase length of parent array by `1`
+        item_indexes.push(pos - *anchor);
+
+        Ok(JsonBlock {
+            level: self.level,
+            value: JsonValue::Value(value, value_span),
+        })
+    }
+
+    #[inline]
+    const fn create_value_block(&self, value: JsonType, value_span: Span) -> JsonBlock {
+        JsonBlock {
+            level: self.level,
+            value: JsonValue::Value(value, value_span),
+        }
+    }
+
+    // jump to higher level and update it's indexes
+    // it also mean jump to the block that represent for the parent of those items,
+    // tell him that all your children were born and you need to know their name (index).
+    #[reflection]
+    fn rollup_indexes(&mut self, ast: &mut [JsonBlock], end: usize) -> crate::Result<()> {
+        // the `state` holding the position of the parent object/array
+        let Some(state) = self.pop_state() else {
+            return Err(JsonError::custom(format!("[{__fn_ident}] No more state in stack, soon EOS"), Span::default()));
         };
 
-        let _colon = match self.next_token() {
-            Some(JsonToken::Punct(Punct::Colon, cspan)) => cspan,
-            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(format!("[{__fn_ident}] {}", err), span)),
-            Some(tk) => return Err(JsonError::custom(format!("[{__fn_ident}] unexpected token when parsing `colon`"), tk.get_span())),
-            None => return Err(JsonError::custom(format!("[{__fn_ident}] `colon` should not be None"), Span::default())),
+        match state {
+            // take the block locate at `pos`
+            // if block's type is an Array, then process update its indexes
+            State::Array(pos, indexes) => match ast.get_mut(pos) {
+                Some(block) => if let JsonValue::Array(item_indexes, array_span) = &mut block.value {
+                    item_indexes.extend(indexes);
+                    array_span.end = end;
+                },
+                _ => return Err(JsonError::custom(format!("[{__fn_ident}] the JsonBlock at index {pos} is not an Array, cannot update indexes"), Span::default())),
+            },
+            // take the block locate at `pos`
+            // if block's type is an Object, then process update its indexes
+            State::Object(pos, indexes) => match ast.get_mut(pos) {
+                Some(block) => if let JsonValue::Object(prop_indexes, obj_span) = &mut block.value {
+                    prop_indexes.extend(indexes);
+                    obj_span.end = end;
+                },
+                _ => return Err(JsonError::custom(format!("[{__fn_ident}] the JsonBlock at index {pos} is not an Object, cannot update indexes"), Span::default())),
+            },
+            // only Object and Array is allow to have items and nested children
+            // Value should be one of primitive JSON supported's type
+            _ => return Err(JsonError::custom(format!("[{__fn_ident}] not allow State::Value when rollup indexes"), Span::default())),
         };
 
-        let value = match self.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::WhiteSpace | Punct::Plus | Punct::Minus, _) | JsonToken::Comment(_))) {
-            Some(JsonToken::Punct(Punct::OpenCurly, _)) => self.parse_obj()?,
-            Some(JsonToken::Punct(Punct::OpenSquare, _)) => self.parse_array()?,
-            Some(JsonToken::Data(JsonType::Str(str_value), data_span)) => JsonValue::Data(JsonType::Str(str_value), data_span),
-            Some(JsonToken::Data(data, data_span)) => JsonValue::Data(data, data_span),
-            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(format!("[{__fn_ident}] {}", err), span)),
-            Some(tk) =>  return Err(JsonError::custom(format!("[{__fn_ident}] not able to parse this token"), tk.get_span())),
-            None => return Err(JsonError::custom(format!("[{__fn_ident}] parsing prop value but reaching None"), Span::default())),
-        };
-
-        Ok(Some(JsonProp::new(JsonStr(key_span), value)))
+        Ok(())
     }
 }
 
+impl JsonCursor {
+    pub fn init(parser: &mut JsonParser<'_>) -> crate::Result<Self> {
+        let Some(token) = parser.next_token() else {
+            return Err(JsonError::custom("Reach the end of token stream, soon EOF", Span::default()));
+        };
+
+        match token {
+            JsonToken::Punct(Punct::OpenCurly, _) => Ok(Self::new(State::Object(0, HashMap::new()))),
+            JsonToken::Punct(Punct::OpenSquare, _) => Ok(Self::new(State::Array(0, Vec::new()))),
+            JsonToken::Data(_, _) => Ok(Self::new(State::Value)),
+            other_type => Err(JsonError::custom("Invalid JSON, should be comment, value, open-curly, open-square", other_type.get_span())),
+        }
+    }
+
+    #[reflection]
+    pub fn parse_object_prop(
+        &mut self,
+        parser: &mut JsonParser<'_>,
+        ast: &mut [JsonBlock],
+    ) -> crate::Result<Option<JsonBlock>> {
+        let key_span = match parser.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace, _) | JsonToken::Comment(_))) {
+            Some(JsonToken::Data(JsonType::Str(_), span)) => span.collapse(1),
+            Some(JsonToken::Data(JsonType::Ident, span)) => span,
+            // hitting the end of this object
+            Some(JsonToken::Punct(Punct::CloseCurly, span)) => {
+                self.rollup_indexes(ast, span.end)?;
+                return Ok(None);
+            }
+            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(format!("[{__fn_ident}] {}", err), span)),
+            Some(tk) => return Err(JsonError::custom(format!("[{__fn_ident}] expect JSON's key is a str/ident, found other"), tk.get_span())),
+            None => return Err(JsonError::custom(format!("[{__fn_ident}] `key` should not be None"), Span::default()))
+        };
+
+        let _colon = match parser.next_token() {
+            Some(JsonToken::Punct(Punct::Colon, cspan)) => cspan,
+            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(format!("[{__fn_ident}] {}", err), span)),
+            Some(tk) => return Err(JsonError::custom(format!("[{__fn_ident}] expect next token is a colon, found other"), tk.get_span())),
+            None => return Err(JsonError::custom(format!("[{__fn_ident}] `colon` should not be None"), Span::default()))
+        };
+
+        let value = match parser.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::WhiteSpace | Punct::Plus | Punct::Minus, _) | JsonToken::Comment(_))) {
+            Some(JsonToken::Punct(Punct::OpenCurly, span)) => {
+                self.update_prop_index(key_span, parser, ast.len())?;
+                self.create_object_block(ast.len(), span)
+            }
+            Some(JsonToken::Punct(Punct::OpenSquare, span)) => {
+                self.update_prop_index(key_span, parser, ast.len())?;
+                self.create_array_block(ast.len(), span)
+            }
+            Some(JsonToken::Data(data @ JsonType::Str(_), data_span)) => self.create_prop_block(key_span, data, data_span.collapse(1), parser, ast.len())?,
+            Some(JsonToken::Data(data, data_span)) => self.create_prop_block(key_span, data, data_span, parser, ast.len())?,
+            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(format!("[{__fn_ident}] {}", err), span)),
+            Some(tk) => return Err(JsonError::custom(format!("[{__fn_ident}] expect next token is primitive value, open-curly or open-square, found other"), tk.get_span())),
+            None => return Err(JsonError::custom(format!("[{__fn_ident}] parsing prop value but reaching None"), Span::default())),
+        };
+
+        Ok(Some(value))
+    }
+
+    #[reflection]
+    pub fn parse_array_item(&mut self, parser: &mut JsonParser<'_>, ast: &mut [JsonBlock]) -> crate::Result<Option<JsonBlock>> {
+        let next_item = parser.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace | Punct::Plus | Punct::Minus, _) | JsonToken::Comment(_)));
+        let item_value = match next_item {
+            Some(JsonToken::Data(data, data_span)) => self.create_item_block(ast.len(), data, data_span)?,
+            Some(JsonToken::Punct(Punct::OpenCurly, span)) => {
+                self.update_array_length(ast.len())?;
+                self.create_object_block(ast.len(), span)
+            },
+            Some(JsonToken::Punct(Punct::OpenSquare, span)) => {
+                self.update_array_length(ast.len())?;
+                self.create_array_block(ast.len(), span)
+            },
+            // hitting the end of this array
+            Some(JsonToken::Punct(Punct::CloseSquare, span)) =>  {
+                self.rollup_indexes(ast, span.end)?;
+                return Ok(None)
+            },
+            Some(JsonToken::Punct(_, span)) => return Err(JsonError::invalid_array(span)),
+            Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(format!("[{__fn_ident}] {}", err), span)),
+            Some(JsonToken::Comment(span)) => return Err(JsonError::custom(format!("[{__fn_ident}] should not reaching this state, because all comments must be stripped all"), span)),
+            None => return Err(JsonError::custom(format!("[{__fn_ident}] reaching None when parsing"), Span::default()))
+        };
+
+        Ok(Some(item_value))
+    }
+
+    // the whole source is single-value
+    #[reflection]
+    pub fn parse_value(&mut self, parser: &mut JsonParser<'_>) -> crate::Result<Option<JsonBlock>> {
+        let next_item = parser.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace | Punct::Plus | Punct::Minus, _) | JsonToken::Comment(_)));
+        let item_value = match next_item {
+            Some(JsonToken::Data(data, data_span)) => self.create_value_block(data, data_span),
+            _ => return Err(JsonError::custom(format!("[{__fn_ident}] invalid json value"), Span::default())),
+        };
+        Ok(Some(item_value))
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn parse_json_object() {
-        let json = "{'a':1 ,'b':2}";
-        let mut obj = JsonParser::new(json);
+    fn parse_simple_json() {
+        let mut parser =
+            JsonParser::new("{ a: 1, b: { c: 0x0F }, d: \"\", f: true, g: [1,[2,3],{h:1}]}");
+        let out = parser.parse();
 
-        let _ = obj.parse().inspect_err(|e| eprintln!("{}", e));
+        assert!(out.inspect_err(|err| eprintln!("{err}")).is_ok());
     }
 
     #[test]
-    fn parse_json_array() {
-        let json = "[1,2, { a: 1, b: [1,2,3] }]";
-        let mut arr = JsonParser::new(json);
+    fn parse_complex_json() {
+        let mut parser =
+            JsonParser::new("{ a: 1, b: [1,2, { d: { e: [{f:1}] } }], g: \"\n\t\", h: 0x9F }");
+        let out = parser.parse();
 
-        let _ = arr.parse().inspect_err(|e| eprintln!("{}", e));
-    }
-
-    #[test]
-    fn parse_json_object2() {
-        let json = "{'a':1 ,'b':2}";
-        let mut obj = JsonParser::new(json);
-
-        let _ = obj.parse().inspect_err(|e| eprintln!("{}", e));
-    }
-
-    #[test]
-    fn parse_json_array2() {
-        let json = "[1,2, { a: 1, b: [1,2,3] }]";
-        let mut arr = JsonParser::new(json);
-
-        let _ = arr.parse().inspect_err(|e| eprintln!("{}", e));
-    }
-
-    // UnHappy Cases
-
-    #[test]
-    fn json_key_not_valid() {
-        let mut arr = JsonParser::new("{ $dolar: 1 }");
-
-        let err = arr.parse().unwrap_err();
-
-        println!("{err}");
-        println!("{err:?}");
-    }
-
-    #[test]
-    fn duplicate_key() {
-        let mut obj = JsonParser::new(
-        r#"{
-            a: 1,
-            a: 2
-        }"#
-        );
-        let err = obj.parse().unwrap_err();
-
-        println!("{err}");
-        println!("{err:?}");
+        assert!(out.inspect_err(|err| eprintln!("{err}")).is_ok());
     }
 }

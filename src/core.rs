@@ -1,6 +1,8 @@
 use std::{collections::HashMap, fmt::Display, hash::Hash};
 
-use crate::{common::{self, Holder}, error::JsonError, lexer::Tokenizer, parser::JsonParser};
+use jsode_macro::reflection;
+
+use crate::{common::Arrice, error::JsonError, parser::JsonParser};
 
 #[derive(PartialEq, PartialOrd, Debug)]
 pub enum JsonType {
@@ -200,7 +202,7 @@ impl Sign {
 }
 
 impl StrType {
-    pub(crate) fn parse_str<'a>(&'a self, parser: &'a JsonParser<Tokenizer<'a>>) -> Result<&'a str> {
+    pub(crate) fn parse_str<'a>(&'a self, parser: &'a JsonParser<'a>) -> Result<&'a str> {
         match self {
             Self::Str(span) => Ok(parser.take_slice(Span::new(span.start, span.end))?),
             Self::Ascii(span) => Ok(parser.take_slice(Span::new(span.start + 2, span.end))?),
@@ -380,41 +382,85 @@ impl JsonToken {
     }
 }
 
+#[derive(PartialEq, Debug)]
+pub struct JsonBlock {
+    pub(crate) level: usize,
+    pub(crate) value: JsonValue,
+}
 
-pub trait JsonQuery {
-    type Out<'out> where Self: 'out;
-    fn query(&self, command: &str) -> Self::Out<'_>;
+impl Default for JsonBlock {
+    fn default() -> Self {
+        Self { level: 0, value: JsonValue::Array(Vec::new(), Span::default()) }
+    }
+}
+
+impl JsonBlock {
+    pub fn new(level: usize, value: JsonValue) -> Self {
+        Self { level, value }
+    }
+
+    #[inline]
+    pub(crate) fn parse_type<T: std::str::FromStr>(&self, parser: &JsonParser<'_>) -> Result<T>
+        where T::Err: Display {
+        let span = self.value.get_span();
+        let slice = parser.take_slice(span.clone())?;
+        slice.parse::<T>().map_err(|err| JsonError::custom(format!("{err}"), span))
+    }
+
+    #[inline]
+    pub(crate) fn parse_type_span<T: std::str::FromStr>(&self, parser: &JsonParser<'_>, span: Span) -> Result<T>
+        where T::Err: Display {
+        let slice = parser.take_slice(span.clone())?;
+        slice.parse::<T>().map_err(|err| JsonError::custom(format!("{err}"), span))
+    }
+
+    #[inline]
+    pub fn to_slice<'a>(&'a self, parser: &'a JsonParser<'a>) -> Result<&str> {
+        let span = self.value.get_span();
+        parser.take_slice(span)
+    }
+
+    pub const fn to_bytes<'a>(&'a self, parser: &'a JsonParser<'a>) -> &[u8] {
+        let span = self.value.get_span();
+        parser.take_raw(span)
+    }
 }
 
 #[derive(PartialEq, Debug)]
-pub struct JsonOutput<'p> {
-    pub(crate) parser: &'p JsonParser<Tokenizer<'p>>,
-    pub(crate) ast: Holder<'p, JsonValue>,
+pub struct JsonOutput<'out> {
+    pub(crate) parser: &'out JsonParser<'out>,
+    pub(crate) ast: Arrice<'out, JsonBlock>,
 }
 
-impl <'p> JsonOutput<'p> {
-    pub fn new(parser: &'p JsonParser<Tokenizer<'p>>, ast: impl Into<Holder<'p, JsonValue>>) -> Self {
+impl <'out> JsonOutput<'out> {
+    pub fn new(parser: &'out JsonParser<'out>, ast: impl Into<Arrice<'out, JsonBlock>>) -> Self {
         Self { parser, ast: ast.into(), }
     }
 
     #[inline]
+    #[reflection]
     pub(crate) fn parse_type<T: std::str::FromStr>(&self) -> Result<T>
         where T::Err: Display {
-        let span = self.ast.as_ref().get_span();
-        let slice = self.parser.take_slice(span.clone())?;
-        slice.parse::<T>().map_err(|err| JsonError::custom(format!("{err}"), span))
+        self.ast.as_slice().first()
+            .map(|it| it.parse_type(self.parser))
+            .ok_or(JsonError::custom(format!("[{__fn_ident}] Soon EOF"), Span::default()))?
     }
 
     #[inline]
+    #[reflection]
     pub(crate) fn parse_type_span<T: std::str::FromStr>(&self, span: Span) -> Result<T>
         where T::Err: Display {
-        let slice = self.parser.take_slice(span.clone())?;
-        slice.parse::<T>().map_err(|err| JsonError::custom(format!("{err}"), span))
+        self.ast.as_slice().first()
+            .map(|it| it.parse_type_span(self.parser, span))
+            .ok_or(JsonError::custom(format!("[{__fn_ident}] Soon EOF"), Span::default()))?
     }
 
     #[inline]
+    #[reflection]
     pub fn to_slice(&self) -> Result<&str> {
-        self.parser.take_slice(self.ast.as_ref().get_span())
+        self.ast.as_slice().first()
+            .map(|it| it.to_slice(self.parser))
+            .ok_or(JsonError::custom(format!("[{__fn_ident}] Soon EOF"), Span::default()))?
     }
 
     #[inline]
@@ -422,98 +468,43 @@ impl <'p> JsonOutput<'p> {
         self.parser.take_slice(span)
     }
 
-    pub const fn to_bytes(&self) -> &[u8] {
-        match &self.ast {
-            common::Holder::Owned(t) => self.parser.take_raw(t.get_span()), 
-            common::Holder::Borrow(t) => self.parser.take_raw(t.get_span()),
-        }
-    }
-}
-
-pub trait JsonKey: Hash {}
-
-#[derive(PartialEq, Eq, Hash, Default, Debug)]
-pub struct JsonStr(pub Span);
-#[derive(PartialEq, Hash, Default, Debug)]
-pub struct JsonInt(pub usize);
-
-impl JsonKey for JsonStr {}
-impl JsonKey for JsonInt {}
-
-// JsonProp should be applied to both JsonArray and JsonObject
-// **JsonObject**:
-// For given json "{ name: 'haitmt', age: 25 }", output will be:
-// JsonObject { properties: [ JsonProp { key: 'name', value: 'haitmt' }, JsonProp { key: 'age', value: 18 } ] }
-//
-// **JsonArray**:
-// For given json "[{ id: 1 }, { id: 2 }]", output will be:
-// JsonArray { properties:  }
-#[derive(PartialEq, Debug)]
-pub struct JsonProp<K: JsonKey> {
-    pub(crate) key: K,
-    pub(crate) value: JsonValue,
-}
-
-impl <K: JsonKey> JsonProp<K> {
-    pub const fn new(k: K, v: JsonValue) -> Self {
-        Self { key: k, value: v }
-    }
-}
-
-#[derive(PartialEq, Debug)]
-pub struct JsonObject {
-    pub(crate) properties: HashMap<u64, JsonProp<JsonStr>>,
-    span: Span,
-}
-
-impl JsonObject {
-    pub const fn new(properties: HashMap<u64, JsonProp<JsonStr>>, span: Span) -> Self {
-        Self {
-            properties,
-            span,
-        }
-    }
-}
-
-#[derive(PartialEq, Debug)]
-pub struct JsonArray {
-    pub(crate) properties: Vec<JsonProp<JsonInt>>,
-    span: Span,
-}
-
-impl JsonArray {
-    pub fn new(properties: Vec<JsonProp<JsonInt>>, span: Span) -> Self {
-        Self {
-            properties,
-            span,
-        }
+    pub fn to_bytes(&self) -> Result<&[u8]> {
+        self.ast.as_slice().first()
+            .map(|it| Ok(it.to_bytes(self.parser)))
+            .ok_or(JsonError::custom("msg", Span::default()))?
     }
 }
 
 #[derive(PartialEq, Debug)]
 pub enum JsonValue {
-    Object(JsonObject),
-    Array(JsonArray),
-    Data(JsonType, Span),
+    Object(HashMap<usize, usize>, Span),
+    Array(Vec<usize>, Span),
+    // given prop `year: 2024`
+    // JsonType - type of value (Number in this example)
+    // Span - span of value (span of `2024` in this example)
+    // Span - span of whole property
+    Prop(JsonType, Span, Span),
+    Value(JsonType, Span),
 }
 
 impl JsonValue {
     #[inline]
     pub const fn get_span(&self) -> Span {
         match self {
-            Self::Object(JsonObject { span, .. }) => Span::new(span.start, span.end),
-            Self::Array(JsonArray { span, .. }) => Span::new(span.start, span.end),
-            Self::Data(JsonType::Str(_), span) => Span::new(span.start, span.end).collapse(1),
-            Self::Data(_, span) => Span::new(span.start, span.end),
+            Self::Object(_, span) => Span::new(span.start, span.end),
+            Self::Array(_, span) => Span::new(span.start, span.end),
+            Self::Prop(_, span, _) => Span::new(span.start, span.end),
+            Self::Value(_, span) => Span::new(span.start, span.end),
         }
     }
 
     #[inline(always)]
     pub const fn get_type_name(&self) -> &str {
         match self {
-            Self::Object(_) => "object",
-            Self::Array(_) => "array",
-            Self::Data(data_ty, __not_exist__) => data_ty.get_type_name()
+            Self::Object(_,_) => "object",
+            Self::Array(_,_) => "array",
+            Self::Prop(data_ty,_,_) => data_ty.get_type_name(),
+            Self::Value(data_ty, _) => data_ty.get_type_name()
         }
     }
 }
