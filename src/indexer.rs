@@ -1,4 +1,4 @@
-use crate::{common, core::{JsonOutput, JsonProp, JsonValue}};
+use crate::{common, core::{JsonBlock, JsonOutput, JsonValue}};
 
 pub enum Key<'k> {
     Str(&'k str),
@@ -27,24 +27,22 @@ impl <'out> JsonIdx for JsonOutput<'out> {
     type Out<'o> = Option<JsonOutput<'o>> where Self: 'o;
 
     fn index<'a>(&self, key: impl Into<Key<'a>>) -> Self::Out<'_> {
-        match key.into() {
-            Key::Str(key_str) => match self.ast.as_ref() {
-                JsonValue::Object(obj) => obj.properties
-                    .get(&common::hash_str(key_str))
-                    .map(|JsonProp { value, .. }| JsonOutput::new(self.parser, value)),
-                _ => None,
+        let block = self.ast.as_slice().first();
+        match (key.into(), block) {
+            // the `pos` is relative position of value with parent object
+            // now the value is the first block of AST
+            (Key::Str(key_str), Some(JsonBlock { value: JsonValue::Object(obj, _), .. })) => obj
+                .get(&(common::hash_str(key_str) as usize))
+                .map(|pos| JsonOutput::new(self.parser, &self.ast.as_slice()[*pos..])),
+            (Key::Int(key_int), Some(JsonBlock { value: JsonValue::Array(positions, _), .. })) if key_int < positions.len() => {
+                let ast_slice = self.ast.as_slice();
+                let ast_len = ast_slice.len();
+                let start = positions[key_int];
+                let end = positions.get(key_int + 1);
+                let range = end.map(|e| start..*e).unwrap_or(start..ast_len);
+                Some(JsonOutput::new(self.parser, &ast_slice[range]))
             },
-            Key::Int(key_int) => match self.ast.as_ref() {
-                JsonValue::Array(arr) => {
-                    if key_int >= arr.properties.len() {
-                        return None;
-                    }
-                    return arr.properties
-                        .get(key_int)
-                        .map(|prop| JsonOutput::new(self.parser, &prop.value))
-                },
-                _ => None,
-            }
+            _ => None,
         }
     }
 }

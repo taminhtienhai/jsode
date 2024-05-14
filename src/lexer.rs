@@ -6,7 +6,7 @@ use crate::{constant, core::{Decimal, JsonToken, NumType, Sign, Span, StrType}, 
 #[derive(PartialEq, Debug)]
 pub struct Tokenizer<'a> {
     ptr: *const u8,
-    pos: usize,
+    pub(crate) pos: usize,
     size: usize,
     _phantom: PhantomData<&'a [u8]>,
 }
@@ -31,21 +31,10 @@ impl <'a> Iterator for Tokenizer<'a> {
 }
 
 impl <'a> Tokenizer<'a> {
-    #[inline(always)]
-    pub const fn prev_item_pos(&self) -> usize {
-        self.pos - 2
+    #[inline]
+    pub const fn is_end(&self) -> bool {
+        self.pos >= self.size
     }
-
-    #[inline(always)]
-    pub const fn cur_item_pos(&self) -> usize {
-        self.pos - 1
-    }
-
-    #[inline(always)]
-    pub const fn next_item_pos(&self) -> usize {
-        self.pos
-    }
-
 
     #[inline]
     pub const fn take_raw(&self, span: Span) -> &[u8] {

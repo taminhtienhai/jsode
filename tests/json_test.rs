@@ -104,16 +104,16 @@ fn sample6() -> Result<()> {
     let mut json = JsonParser::new(include_str!("../resources/valid/sample6.json5"));
     let out = json.parse()?;
 
-    assert_eq!("\\\"".as_bytes(), out.index("quote").unwrap().to_bytes());
-    assert_eq!([b'\\', b'\\'], out.index("reserver_solidus").unwrap().to_bytes());
-    assert_eq!([b'\\', b'b'] , out.index("backspace").unwrap().to_bytes());
-    assert_eq!([b'\\', b'f'] , out.index("formfeed").unwrap().to_bytes());
-    assert_eq!([b'\\', b'n'] , out.index("newline").unwrap().to_bytes());
-    assert_eq!([b'\\', b'r'] , out.index("carriage_return").unwrap().to_bytes());
-    assert_eq!("\\t \\\", { tab: \\\"t\\\" }".as_bytes(), out.index("tab").unwrap().to_bytes());
-    assert_eq!("\\\" \\\' \\\"".as_bytes(), out.index("single_quote").unwrap().to_bytes());
-    assert_eq!(r"\u032c \\ \/ \b \f \n \r \\\r\\\\\/ \t".as_bytes(), out.index("all").unwrap().to_bytes());
-    assert_eq!(r"\x5C \u005C\u005c".as_bytes(), out.index("special").unwrap().to_bytes());
+    assert_eq!("\\\"".as_bytes(), out.index("quote").unwrap().to_bytes()?);
+    assert_eq!([b'\\', b'\\'], out.index("reserver_solidus").unwrap().to_bytes()?);
+    assert_eq!([b'\\', b'b'] , out.index("backspace").unwrap().to_bytes()?);
+    assert_eq!([b'\\', b'f'] , out.index("formfeed").unwrap().to_bytes()?);
+    assert_eq!([b'\\', b'n'] , out.index("newline").unwrap().to_bytes()?);
+    assert_eq!([b'\\', b'r'] , out.index("carriage_return").unwrap().to_bytes()?);
+    assert_eq!("\\t \\\", { tab: \\\"t\\\" }".as_bytes(), out.index("tab").unwrap().to_bytes()?);
+    assert_eq!("\\\" \\\' \\\"".as_bytes(), out.index("single_quote").unwrap().to_bytes()?);
+    assert_eq!(r"\u032c \\ \/ \b \f \n \r \\\r\\\\\/ \t".as_bytes(), out.index("all").unwrap().to_bytes()?);
+    assert_eq!(r"\x5C \u005C\u005c".as_bytes(), out.index("special").unwrap().to_bytes()?);
 
     Ok(())
 }

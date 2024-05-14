@@ -31,6 +31,33 @@ impl <'a,T> From<&'a T> for Holder<'a, T> {
     }
 }
 
+#[derive(PartialEq, Debug)]
+pub enum Arrice<'a, T> {
+    Slice(&'a [T]),
+    Array(Vec<T>),
+}
+
+impl <'a, T> Arrice<'a, T> {
+    pub fn as_slice(&'a self) -> &'a [T] {
+        match self {
+            Self::Slice(slice) => slice,
+            Self::Array(arr) => arr,
+        }
+    }
+}
+
+impl <'a,T> From<Vec<T>> for Arrice<'a, T> {
+    fn from(value: Vec<T>) -> Self {
+        Self::Array(value)
+    }
+}
+
+impl <'a,T> From<&'a [T]> for Arrice<'a, T> {
+    fn from(value: &'a [T]) -> Self {
+        Self::Slice(value)
+    }
+}
+
 pub fn hash_str(input: &str) -> u64 {
     let mut hasher = std::hash::DefaultHasher::new();
     hasher.write(input.as_bytes());
