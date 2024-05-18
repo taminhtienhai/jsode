@@ -7,6 +7,7 @@ pub(crate) mod msg {
     pub const INVALID_ARRAY:        &str = "not allow this token when parsing array";
     pub const DUPLICATE_KEY:        &str = "already exist key";
     pub const INVALID_ESCAPE:       &str = "the following escape string is not allow";
+    pub const SOON_EOS:             &str = "No more state in stack, soon EOS";
 }
 
 pub(crate) mod ascii {
