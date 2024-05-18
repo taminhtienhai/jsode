@@ -3,13 +3,10 @@ use std::collections::{HashMap, VecDeque};
 use jsode_macro::reflection;
 
 use crate::{
-    common,
-    core::{
+    common, constant::msg, core::{
         JsonBlock, JsonOutput, JsonToken,
         JsonType, JsonValue, Punct, Span,
-    },
-    error::JsonError,
-    lexer::Tokenizer,
+    }, error::JsonError, lexer::Tokenizer
 };
 
 #[derive(PartialEq, Debug)]
@@ -31,33 +28,57 @@ impl<'tk> JsonParser<'tk> {
         let mut cursor = JsonCursor::init(self)?;
 
         let init_block = match cursor.roots.back() {
-            Some(State::Object(_, _)) => JsonBlock::new(0, JsonValue::Object(HashMap::new(), Span::default())),
-            Some(State::Array(_, _)) => JsonBlock::new(0, JsonValue::Array(Vec::new(), Span::default())),
-            // Some(State::Value)       => JsonBlock::new(0, JsonValue::Value(Json)),
-            _ => return Err(JsonError::custom("Invalid JSON", Span::default())),
+            Some(State::Object(_, _)) => JsonBlock::new(0, JsonValue::Object(HashMap::with_capacity(10), Span::default())),
+            Some(State::Array(_, _)) => JsonBlock::new(0, JsonValue::Array(Vec::with_capacity(10), Span::default())),
+            Some(State::Value(JsonType::Ident, span)) => return Err(JsonError::custom("Invalid JSON", span.clone())),
+            Some(State::Value(_, value_span)) => {
+                if self.next_token().is_some() {
+                    return Err(JsonError::custom("Invalid JSON", value_span.clone()));
+                }
+                let State::Value(ty, span) = cursor.roots.pop_back().unwrap() else {
+                    return Err(JsonError::custom("Invalid JSON", Span::default())); 
+                };
+
+                return Ok(JsonOutput::new(self, Vec::<JsonBlock>::from_iter([
+                    JsonBlock::new(0, JsonValue::Value(ty, span))
+                ])));
+            },
+            None => return Err(JsonError::custom("Invalid JSON", Span::default())),
         };
         cursor.level += 1;
 
         let mut ast = Vec::<JsonBlock>::from_iter([init_block]);
 
-        while !self.iter.is_end() {
-            let Some(block) = match cursor.roots.back() {
-                Some(State::Object(_, _)) => cursor.parse_object_prop(self, ast.as_mut()),
-                Some(State::Array(_, _)) => cursor.parse_array_item(self, ast.as_mut()),
-                Some(State::Value) => cursor.parse_value(self),
-                None => if self.iter.is_end() {
-                    break;
-                } else {
-                    return Err(JsonError::custom("Soon EOF", Span::default()));
-                },
-            }? else {
-                // reaching close-curly ('}') or close-bracket (']')
-                // at this state, only inner value of cursor need to be changed
-                // continue parsing
-                continue;
+        while let Some(state) = cursor.roots.back() {
+            let block = match state {
+                State::Object(_,_) => cursor.parse_object_prop(self, ast.as_mut()),
+                State::Array(_,_) => cursor.parse_array_item(self, ast.as_mut()),
+                State::Value(_,_) => cursor.parse_value(self),
+            }?;
+
+            let next_token = match (!cursor.roots.is_empty(), self.next_token()) {
+                (true, token @ Some(_)) => token,
+                (false, None) => None,
+                _ => return Err(JsonError::custom("Invalid JSON", Span::default())),
             };
 
-            ast.push(block);
+            let Some(block_value) = block else { match &next_token {
+                Some(JsonToken::Punct(Punct::Comma, _)) => 0,
+                None => 0,
+                Some(JsonToken::Punct(Punct::CloseCurly | Punct::CloseSquare, span)) => self.iter.step_back_nth(span.gap()),
+                Some(other) => return Err(JsonError::custom("expect comma or close-square, found other", other.get_span())),
+            }; continue; };
+
+            match (&block_value.value, next_token) {
+                (JsonValue::Prop(_,_,_) | JsonValue::Value(_,_), Some(JsonToken::Punct(Punct::Comma, _))) => 0,
+                (JsonValue::Prop(_,_,_) | JsonValue::Value(_,_), Some(JsonToken::Punct(Punct::CloseCurly | Punct::CloseSquare, span))) => self.iter.step_back_nth(span.gap()),
+                (JsonValue::Prop(_,_,_) | JsonValue::Value(_,_), Some(other)) => return Err(JsonError::custom("expect comma or close-square, found other", other.get_span())),
+                (JsonValue::Prop(_,_,_) | JsonValue::Value(_,_), None) => return Err(JsonError::custom("parsing prop value but reaching None", Span::default())),
+                (_, Some(other)) => self.iter.step_back_nth(other.get_span().gap()),
+                (_, None) => return Err(JsonError::custom("expect comma or close-square, found other", Span::default())),
+            };
+
+            ast.push(block_value);
         }
 
         Ok(JsonOutput::new(self, ast))
@@ -111,7 +132,7 @@ pub(crate) enum State {
     // everytime a new item parsed successfully, second `usize` will increased by one
     Array(usize, Vec<usize>),
     // Prop,
-    Value,
+    Value(JsonType, Span),
     // EOF,
 }
 
@@ -142,7 +163,7 @@ impl JsonCursor {
     #[reflection]
     fn update_prop_index(&mut self, key: Span, parser: &JsonParser<'_>, block_pos: usize) -> crate::Result<()> {
         let Some(State::Object(anchor, ref mut prop_indexes)) = self.roots.back_mut() else {
-            return Err(JsonError::custom(format!("[{__fn_ident}] No more state in stack, soon EOS"), Span::default()));
+            return Err(JsonError::custom(format!("[{__fn_ident}] {}", msg::SOON_EOS), Span::default()));
         };
         // insert new item to object indexes
         let key_slice = parser.take_slice(key)?;
@@ -160,7 +181,7 @@ impl JsonCursor {
     #[reflection]
     fn update_array_length(&mut self, pos: usize) -> crate::Result<()> {
         let Some(State::Array(anchor, ref mut item_indexes)) = self.roots.back_mut() else {
-            return Err(JsonError::custom(format!("[{__fn_ident}] No more state in stack, soon EOS"), Span::default()));
+            return Err(JsonError::custom(format!("[{__fn_ident}] {}", msg::SOON_EOS), Span::default()));
         };
         // push array's item related position
         item_indexes.push(pos - *anchor);
@@ -172,10 +193,10 @@ impl JsonCursor {
     fn create_object_block(&mut self, position: usize, span: Span) -> JsonBlock {
         let block = JsonBlock {
             level: self.level,
-            value: JsonValue::Object(HashMap::new(), span),
+            value: JsonValue::Object(HashMap::with_capacity(10), span),
         };
         self.level += 1;
-        self.roots.push_back(State::Object(position, HashMap::new()));
+        self.roots.push_back(State::Object(position, HashMap::with_capacity(10)));
         block
     }
 
@@ -183,17 +204,17 @@ impl JsonCursor {
     fn create_array_block(&mut self, position: usize, span: Span) -> JsonBlock {
         let block = JsonBlock {
             level: self.level,
-            value: JsonValue::Array(Vec::new(), span),
+            value: JsonValue::Array(Vec::with_capacity(10), span),
         };
         self.level += 1;
-        self.roots.push_back(State::Array(position, Vec::new()));
+        self.roots.push_back(State::Array(position, Vec::with_capacity(10)));
         block
     }
 
     #[reflection]
     fn create_prop_block(&mut self, key: Span, value: JsonType, value_span: Span, parser: &JsonParser<'_>, block_pos: usize) -> crate::Result<JsonBlock> {
         let Some(State::Object(anchor, ref mut prop_indexes)) = self.roots.back_mut() else {
-            return Err(JsonError::custom(format!("[{__fn_ident}] No more state in stack, soon EOS"), Span::default()));
+            return Err(JsonError::custom(format!("[{__fn_ident}] {}", msg::SOON_EOS), Span::default()));
         };
         // insert new item to object indexes
         let key_slice = parser.take_slice(key.clone())?;
@@ -210,7 +231,7 @@ impl JsonCursor {
     #[reflection]
     fn create_item_block(&mut self, pos: usize, value: JsonType, value_span: Span) -> crate::Result<JsonBlock> {
         let Some(State::Array(anchor, ref mut item_indexes)) = self.roots.back_mut() else {
-            return Err(JsonError::custom(format!("[{__fn_ident}] No more state in stack, soon EOS"), Span::default()));
+            return Err(JsonError::custom(format!("[{__fn_ident}] {}", msg::SOON_EOS), Span::default()));
         };
         // increase length of parent array by `1`
         item_indexes.push(pos - *anchor);
@@ -236,7 +257,7 @@ impl JsonCursor {
     fn rollup_indexes(&mut self, ast: &mut [JsonBlock], end: usize) -> crate::Result<()> {
         // the `state` holding the position of the parent object/array
         let Some(state) = self.pop_state() else {
-            return Err(JsonError::custom(format!("[{__fn_ident}] No more state in stack, soon EOS"), Span::default()));
+            return Err(JsonError::custom(format!("[{__fn_ident}] {}", msg::SOON_EOS), Span::default()));
         };
 
         match state {
@@ -276,18 +297,14 @@ impl JsonCursor {
         match token {
             JsonToken::Punct(Punct::OpenCurly, _) => Ok(Self::new(State::Object(0, HashMap::new()))),
             JsonToken::Punct(Punct::OpenSquare, _) => Ok(Self::new(State::Array(0, Vec::new()))),
-            JsonToken::Data(_, _) => Ok(Self::new(State::Value)),
+            JsonToken::Data(ty, span) => Ok(Self::new(State::Value(ty, span))),
             other_type => Err(JsonError::custom("Invalid JSON, should be comment, value, open-curly, open-square", other_type.get_span())),
         }
     }
 
     #[reflection]
-    pub fn parse_object_prop(
-        &mut self,
-        parser: &mut JsonParser<'_>,
-        ast: &mut [JsonBlock],
-    ) -> crate::Result<Option<JsonBlock>> {
-        let key_span = match parser.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace, _) | JsonToken::Comment(_))) {
+    pub fn parse_object_prop(&mut self, parser: &mut JsonParser<'_>, ast: &mut [JsonBlock]) -> crate::Result<Option<JsonBlock>> {
+        let key_span = match parser.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::WhiteSpace, _) | JsonToken::Comment(_))) {
             Some(JsonToken::Data(JsonType::Str(_), span)) => span.collapse(1),
             Some(JsonToken::Data(JsonType::Ident, span)) => span,
             // hitting the end of this object
@@ -307,15 +324,15 @@ impl JsonCursor {
             None => return Err(JsonError::custom(format!("[{__fn_ident}] `colon` should not be None"), Span::default()))
         };
 
-        let value = match parser.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::WhiteSpace | Punct::Plus | Punct::Minus, _) | JsonToken::Comment(_))) {
+        let value = match parser.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::WhiteSpace | Punct::Plus | Punct::Minus, _))) {
             Some(JsonToken::Punct(Punct::OpenCurly, span)) => {
                 self.update_prop_index(key_span, parser, ast.len())?;
                 self.create_object_block(ast.len(), span)
-            }
+            },
             Some(JsonToken::Punct(Punct::OpenSquare, span)) => {
                 self.update_prop_index(key_span, parser, ast.len())?;
                 self.create_array_block(ast.len(), span)
-            }
+            },
             Some(JsonToken::Data(data @ JsonType::Str(_), data_span)) => self.create_prop_block(key_span, data, data_span.collapse(1), parser, ast.len())?,
             Some(JsonToken::Data(data, data_span)) => self.create_prop_block(key_span, data, data_span, parser, ast.len())?,
             Some(JsonToken::Error(err, span)) => return Err(JsonError::custom(format!("[{__fn_ident}] {}", err), span)),
@@ -328,8 +345,7 @@ impl JsonCursor {
 
     #[reflection]
     pub fn parse_array_item(&mut self, parser: &mut JsonParser<'_>, ast: &mut [JsonBlock]) -> crate::Result<Option<JsonBlock>> {
-        let next_item = parser.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace | Punct::Plus | Punct::Minus, _) | JsonToken::Comment(_)));
-        let item_value = match next_item {
+        let item_value = match parser.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::WhiteSpace | Punct::Plus | Punct::Minus, _) | JsonToken::Comment(_))) {
             Some(JsonToken::Data(data, data_span)) => self.create_item_block(ast.len(), data, data_span)?,
             Some(JsonToken::Punct(Punct::OpenCurly, span)) => {
                 self.update_array_length(ast.len())?;
@@ -356,7 +372,7 @@ impl JsonCursor {
     // the whole source is single-value
     #[reflection]
     pub fn parse_value(&mut self, parser: &mut JsonParser<'_>) -> crate::Result<Option<JsonBlock>> {
-        let next_item = parser.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::Comma | Punct::WhiteSpace | Punct::Plus | Punct::Minus, _) | JsonToken::Comment(_)));
+        let next_item = parser.next_token_skip(|tk| matches!(tk, JsonToken::Punct(Punct::WhiteSpace | Punct::Plus | Punct::Minus, _) | JsonToken::Comment(_)));
         let item_value = match next_item {
             Some(JsonToken::Data(data, data_span)) => self.create_value_block(data, data_span),
             _ => return Err(JsonError::custom(format!("[{__fn_ident}] invalid json value"), Span::default())),

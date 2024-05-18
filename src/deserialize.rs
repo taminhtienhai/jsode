@@ -107,17 +107,27 @@ impl_unsigned_deserialization!(u8, u16, u32, u64, usize);
 impl_signed_deserialization!(i8, i16, i32, i64, isize);
 impl_float_deserialization!(f32, f64);
 
+impl Deserialize for bool {
+    fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
+        match out.ast.as_slice().first().map(|it| &it.value) {
+            Some(JsonValue::Value(JsonType::Bool(value), _)) => Ok(*value),
+            Some(JsonValue::Prop(JsonType::Bool(value),_,_)) => Ok(*value),
+            Some(other_type) => Err(JsonError::invalid_type(other_type.get_span(), "bool")),
+            None => Err(JsonError::custom("Soon EOF", Span::default())),
+        }
+    }
+}
+
 impl Deserialize for String {
     fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
         match out.ast.as_slice().first().map(|it| &it.value) {
             Some(JsonValue::Value(JsonType::Str(str_tokens),_)) => Ok(parse_str(out.parser, str_tokens)?),
             Some(JsonValue::Prop(JsonType::Str(str_tokens),_,_)) => Ok(parse_str(out.parser, str_tokens)?),
             Some(other_type) => Err(JsonError::invalid_type(other_type.get_span(), "String")),
-            _ => Err(JsonError::custom("Soon EOF", Span::default()))
+            None => Err(JsonError::custom("Soon EOF", Span::default()))
         }
     }
 }
-
 
 impl <T: Deserialize> Deserialize for Vec<T> {
     fn parse(out: &JsonOutput<'_>) -> Result<Self, JsonError> {
@@ -156,7 +166,7 @@ fn parse_str(
     parser: &JsonParser<'_>,
     tokens: &Vec<StrType>,
 ) -> Result<String, JsonError> {
-    let mut result = Vec::<&str>::new();
+    let mut result = Vec::<&str>::with_capacity(tokens.len());
 
     for item in tokens {
         let token = item.parse_str(parser)?;

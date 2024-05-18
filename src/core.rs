@@ -390,7 +390,7 @@ pub struct JsonBlock {
 
 impl Default for JsonBlock {
     fn default() -> Self {
-        Self { level: 0, value: JsonValue::Array(Vec::new(), Span::default()) }
+        Self { level: 0, value: JsonValue::Array(Vec::with_capacity(10), Span::default()) }
     }
 }
 
@@ -477,7 +477,7 @@ impl <'out> JsonOutput<'out> {
 
 #[derive(PartialEq, Debug)]
 pub enum JsonValue {
-    Object(HashMap<usize, usize>, Span),
+    Object(HashMap<usize,usize>, Span),
     Array(Vec<usize>, Span),
     // given prop `year: 2024`
     // JsonType - type of value (Number in this example)

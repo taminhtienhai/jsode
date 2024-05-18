@@ -26,182 +26,6 @@ impl <'a> Iterator for Tokenizer<'a> {
     type Item = JsonToken;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.parse_token()
-    }
-}
-
-impl <'a> Tokenizer<'a> {
-    #[inline]
-    pub const fn is_end(&self) -> bool {
-        self.pos >= self.size
-    }
-
-    #[inline]
-    pub const fn take_raw(&self, span: Span) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self.ptr.add(span.start), span.gap()) }
-    }
-
-    #[inline]
-    pub fn take_slice(&self, span: Span) -> Result<&str, JsonError> {
-        unsafe {
-            let slice = std::slice::from_raw_parts(self.ptr.add(span.start), span.gap());
-            std::str::from_utf8(slice)
-                .map_err(|err| JsonError::custom(err.to_string(), span))
-        }
-    }
-
-    // SAFETY: as long as `self.pos` being control and not exceeding `self.size`
-    // 0 <= self.pos <= self.size
-    #[inline]
-    fn next_item(&mut self) -> Option<u8> {
-        if self.pos >= self.size {
-            None
-        } else {
-            let next_item = unsafe { ptr::read(self.ptr.add(self.pos)) };
-            self.pos += 1;
-            Some(next_item)
-        }
-    }
-
-    // SAFETY: 0 <= self.pos <= self.size
-    #[inline]
-    const fn peek_prev_item(&self) -> Option<u8> {
-        if self.pos > 0 {
-            // subtract is sounded, program will panic if (self.pos - 2) < 0
-            let prev_item = unsafe { ptr::read(self.ptr.add(self.pos - 2)) };
-            Some(prev_item)
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    const fn peek_next_item(&self) -> Option<u8> {
-        if self.pos >= self.size {
-            None
-        } else {
-            let next_item = unsafe { ptr::read(self.ptr.add(self.pos)) };
-            Some(next_item)
-        }
-    }
-
-    // SAFETY: 0 <= self.pos <= self.size
-    #[inline]
-    const fn peek_next_nth_item(&self, n: usize) -> Option<u8> {
-        // because `self.pos` is already present for next item position, so we must minus the `n` with `1` to make it correct.
-        // if `n` equal 0, return item at `self.pos`
-        let nth_item_pos = n - 1;
-        if self.pos + nth_item_pos >= self.size {
-            None
-        } else {
-            let next_item = unsafe { ptr::read(self.ptr.add(self.pos + nth_item_pos)) };
-            Some(next_item)
-        }
-    }
-
-    #[inline]
-    #[reflection]
-    fn next_exact_until(&mut self, size: usize, predicate: impl Fn(u8) -> bool) -> Result<(), JsonError> {
-        for n in 0..size {
-            let Some(next_item) = self.next_item() else {
-                return Err(JsonError::custom(
-                    format!("[{__fn_ident}] soon EOF, expect {n} token more"),
-                    Span::new(self.pos - (self.pos - n + 1), self.pos)));
-            };
-
-            if !predicate(next_item) {
-                return Err(JsonError::custom(
-                    format!("[{__fn_ident}] cannot satisfy condition"),
-                    Span::new(self.pos - (self.pos - n + 1), self.pos)))
-            }
-        }
-        Ok(())
-    }
-
-    // iterate over `src` until reaching the **UNEXPECTED** token
-    // CAUTION: this method modify `self.pos` to avoid consume the **UNEXPECTED** token
-    #[inline]
-    fn consume_until(&mut self, predicate: impl Fn(u8) -> bool) -> Span {
-        let start: usize = self.pos;
-        loop {
-            let Some(next_item) = self.next_item() else {
-                break;
-            };
-
-            if predicate(next_item) {
-                // the cursor is pointing into `next_item` (UNEXPECTED token),
-                // move the cursor backward to unconsume it.
-                self.step_back();
-                break;
-            }
-        }
-        Span::new(start, self.pos)
-    }
-
-    // iterate over `src` until reaching **EXPECTED** token
-    // CAUTION: this method modify `self.pos` to consume all **EXPECTED** tokens
-    #[inline]
-    fn consume_pair_until(&mut self, predicate: impl Fn(u8,u8) -> bool) -> Span {
-        let start: usize = self.pos;
-        loop {
-            let (Some(first_item), Some(second_item)) = (self.next_item(), self.peek_next_item()) else {
-                break;
-            };
-
-            if predicate(first_item, second_item) {
-                // the cursor is pointing into `second_item`,
-                // move the cursor forward to consume it.
-                self.step_front();
-                break;
-            }
-        }
-        Span::new(start, self.pos)
-    }
-
-    #[inline]
-    fn move_forward_then_consume_until(&mut self, n: usize, predicate: impl Fn(u8) -> bool) -> Span {
-        self.pos = (self.pos + n).min(self.size);
-        self.consume_until(predicate)
-    }
-
-    #[inline]
-    fn move_backward_then_consume_until(&mut self, n: usize, predicate: impl Fn(u8) -> bool) -> Span {
-        // sounded
-        self.pos -= n;
-        self.consume_until(predicate)
-    }
-
-    #[inline(always)]
-    fn step_back(&mut self) -> usize {
-        // sounded
-        self.pos -= 1;
-        self.pos
-    }
-    
-    #[inline(always)]
-    fn step_front(&mut self) -> usize {
-        if self.pos >= self.size { return self.pos; }
-        self.pos += 1;
-        self.pos
-    }
-
-    fn parse_keyword(&self, start: usize) -> JsonToken {
-        let gap = self.pos - start;
-        let buf = unsafe { std::slice::from_raw_parts(self.ptr.add(start), gap) };
-        std::str::from_utf8(buf).map(|res| match res {
-            "true"      => JsonToken::boolean(true, start),
-            "false"     => JsonToken::boolean(false, start),
-            "Infinity"  => JsonToken::number(NumType::Infinity(Span::new(start, self.pos)), start, self.pos),
-            "NaN"       => JsonToken::number(NumType::NaN(Span::new(start, self.pos)), start, self.pos),
-            _           => JsonToken::ident(start, self.pos),
-        }).unwrap_or_else(|err| JsonToken::error(err.to_string(), start, gap))
-        
-    }
-}
-
-impl <'a> Tokenizer<'a> {
-    #[inline(always)]
-    pub fn parse_token(&mut self) -> Option<JsonToken> {
         let at = self.pos;
         let next_item = self.next_item()?;
 
@@ -370,11 +194,7 @@ impl <'a> Tokenizer<'a> {
                     return JsonToken::error("Invalid number, '+' and '-' must follow by at least a digit", at, self.pos).into();
                 }
 
-                if next_item.eq(&b'+') {
-                    JsonToken::plus(at, self.pos).into()
-                } else {
-                    JsonToken::minus(at, self.pos).into()
-                }
+                JsonToken::whitespace(at, self.pos).into()
             },
             b'.' => {
                 // consume until reaching a non-digit character
@@ -414,7 +234,7 @@ impl <'a> Tokenizer<'a> {
                     let frac_span = self.consume_until(|item| !item.is_ascii_digit());
 
                     if frac_span.start != frac_span.end {
-                        if self.peek_next_item().is_some_and(|it| it.eq(&b'e')) {
+                        if self.peek_next_item().is_some_and(|it| matches!(it, b'e' | b'E')) {
                             let expo_span = self.move_forward_then_consume_until(1, |item| !matches!(item, b'+' | b'-' | b'0'..=b'9'));
                             if expo_span.start != expo_span.end {
                                 return JsonToken::number(inverse.to_decimal(Some(int_span), Some(frac_span), Some(expo_span)), start_at, self.pos).into();
@@ -426,7 +246,7 @@ impl <'a> Tokenizer<'a> {
                     }
                 }
                 // handle exponential
-                if next_item.eq(&b'e') {
+                if matches!(next_item, b'e' | b'E') {
                     // if exponent has a sign ('+' | '-') and follow by a digit. Move cursor to the next position and return 1.
                     // if exponent has only digits, return 0 instead.
                     // otherwise not a valid exponent
@@ -466,6 +286,178 @@ impl <'a> Tokenizer<'a> {
             
             unknown_token => JsonToken::error(format!("{} {}", constant::msg::NOT_SUPPORT_TOKEN, char::from_u32(unknown_token as u32).unwrap()), at, self.pos).into()
         }
+    }
+}
+
+impl <'a> Tokenizer<'a> {
+    #[inline]
+    pub const fn is_end(&self) -> bool {
+        self.pos >= self.size
+    }
+
+    #[inline]
+    pub const fn take_raw(&self, span: Span) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(self.ptr.add(span.start), span.gap()) }
+    }
+
+    #[inline]
+    pub fn take_slice(&self, span: Span) -> Result<&str, JsonError> {
+        unsafe {
+            let slice = std::slice::from_raw_parts(self.ptr.add(span.start), span.gap());
+            std::str::from_utf8(slice)
+                .map_err(|err| JsonError::custom(err.to_string(), span))
+        }
+    }
+
+    // SAFETY: as long as `self.pos` being control and not exceeding `self.size`
+    // 0 <= self.pos <= self.size
+    #[inline]
+    fn next_item(&mut self) -> Option<u8> {
+        if self.pos >= self.size {
+            None
+        } else {
+            let next_item = unsafe { ptr::read(self.ptr.add(self.pos)) };
+            self.pos += 1;
+            Some(next_item)
+        }
+    }
+
+    // SAFETY: 0 <= self.pos <= self.size
+    #[inline]
+    const fn peek_prev_item(&self) -> Option<u8> {
+        if self.pos > 0 {
+            // subtract is sounded, program will panic if (self.pos - 2) < 0
+            let prev_item = unsafe { ptr::read(self.ptr.add(self.pos.saturating_sub(2))) };
+            Some(prev_item)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    const fn peek_next_item(&self) -> Option<u8> {
+        if self.pos >= self.size {
+            None
+        } else {
+            let next_item = unsafe { ptr::read(self.ptr.add(self.pos)) };
+            Some(next_item)
+        }
+    }
+
+    // SAFETY: 0 <= self.pos <= self.size
+    #[inline]
+    const fn peek_next_nth_item(&self, n: usize) -> Option<u8> {
+        // because `self.pos` is already present for next item position, so we must minus the `n` with `1` to make it correct.
+        // if `n` equal 0, return item at `self.pos`
+        let nth_item_pos = n - 1;
+        if self.pos + nth_item_pos >= self.size {
+            None
+        } else {
+            let next_item = unsafe { ptr::read(self.ptr.add(self.pos + nth_item_pos)) };
+            Some(next_item)
+        }
+    }
+
+    #[inline]
+    #[reflection]
+    fn next_exact_until(&mut self, size: usize, predicate: impl Fn(u8) -> bool) -> Result<(), JsonError> {
+        for n in 0..size {
+            let Some(next_item) = self.next_item() else {
+                return Err(JsonError::custom(
+                    format!("[{__fn_ident}] soon EOF, expect {n} token more"),
+                    Span::new(self.pos - (self.pos - n + 1), self.pos)));
+            };
+
+            if !predicate(next_item) {
+                return Err(JsonError::custom(
+                    format!("[{__fn_ident}] cannot satisfy condition"),
+                    Span::new(self.pos - (self.pos - n + 1), self.pos)))
+            }
+        }
+        Ok(())
+    }
+
+    // iterate over `src` until reaching the **UNEXPECTED** token
+    // CAUTION: this method modify `self.pos` to avoid consume the **UNEXPECTED** token
+    #[inline]
+    fn consume_until(&mut self, predicate: impl Fn(u8) -> bool) -> Span {
+        let start: usize = self.pos;
+        while let Some(next_item) = self.next_item() {
+            if predicate(next_item) {
+                // the cursor is pointing into `next_item` (UNEXPECTED token),
+                // move the cursor backward to unconsume it.
+                self.step_back();
+                break;
+            }
+        }
+        Span::new(start, self.pos)
+    }
+
+    // iterate over `src` until reaching **EXPECTED** token
+    // CAUTION: this method modify `self.pos` to consume all **EXPECTED** tokens
+    #[inline]
+    fn consume_pair_until(&mut self, predicate: impl Fn(u8,u8) -> bool) -> Span {
+        let start: usize = self.pos;
+        loop {
+            let (Some(first_item), Some(second_item)) = (self.next_item(), self.peek_next_item()) else {
+                break;
+            };
+
+            if predicate(first_item, second_item) {
+                // the cursor is pointing into `second_item`,
+                // move the cursor forward to consume it.
+                self.step_front();
+                break;
+            }
+        }
+        Span::new(start, self.pos)
+    }
+
+    #[inline]
+    fn move_forward_then_consume_until(&mut self, n: usize, predicate: impl Fn(u8) -> bool) -> Span {
+        self.pos = (self.pos + n).min(self.size);
+        self.consume_until(predicate)
+    }
+
+    #[inline]
+    fn move_backward_then_consume_until(&mut self, n: usize, predicate: impl Fn(u8) -> bool) -> Span {
+        // sounded
+        self.pos -= n;
+        self.consume_until(predicate)
+    }
+
+    #[inline(always)]
+    pub(crate) fn step_back(&mut self) -> usize {
+        // sounded
+        self.pos -= 1;
+        self.pos
+    }
+
+    #[inline(always)]
+    pub(crate) fn step_back_nth(&mut self, step: usize) -> usize {
+        // sounded
+        self.pos -= step;
+        self.pos
+    }
+    
+    #[inline(always)]
+    fn step_front(&mut self) -> usize {
+        if self.pos >= self.size { return self.pos; }
+        self.pos += 1;
+        self.pos
+    }
+
+    fn parse_keyword(&self, start: usize) -> JsonToken {
+        let gap = self.pos - start;
+        let buf = unsafe { std::slice::from_raw_parts(self.ptr.add(start), gap) };
+        std::str::from_utf8(buf).map(|res| match res {
+            "true"      => JsonToken::boolean(true, start),
+            "false"     => JsonToken::boolean(false, start),
+            "Infinity"  => JsonToken::number(NumType::Infinity(Span::new(start, self.pos)), start, self.pos),
+            "NaN"       => JsonToken::number(NumType::NaN(Span::new(start, self.pos)), start, self.pos),
+            _           => JsonToken::ident(start, self.pos),
+        }).unwrap_or_else(|err| JsonToken::error(err.to_string(), start, gap))
+        
     }
 }
 

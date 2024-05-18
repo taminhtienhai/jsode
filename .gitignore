@@ -1,3 +1,4 @@
 /target
 /resources/invalid
+/resources/large
 .cargo
