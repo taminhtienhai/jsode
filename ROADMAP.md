@@ -39,14 +39,26 @@ Everything done lazy. Nothing happened until use call `parse_into`.
 ### Bugs
 
 - [x] `get_span` inside `parse_obj` auto increase `start` & `end` by 1???
-- [ ] breaking when meet eacapse token ('\') 
+- [x] breaking when meet eacapse token ('\') 
+
+## Improvements
+
+- [x] use const fn when possible
+- [ ] enhance keyword lookup
+
+## Benchmark (large-file.json - 26mb)
+
+jsode_v1: 0.21s user 0.14s system 99% cpu 0.349 total
+jsode_v2: 0.30s user 0.07s system 99% cpu 0.310 total
+json_serde: 0.15s user 0.07s system 86% cpu 0.251 total
 
 ## Issues
 
 - [x] convert `Option<Result<u8,JsonError>>` -> `Result<Option<u8>,JsonError>`
 - [x] rename this crate
 - [x] apply github CI/CD
-- [ ] make `unsafe` become resonate
+- [x] remove invalid keyword (Undefined)
+- [ ] make `unsafe` resonate
 - [ ] support `impl_deserialize` macro_rules, generate `iml Deserialize` trait on input types
 - [ ] write document
 - [ ] bring some usecases/examples
@@ -54,6 +66,18 @@ Everything done lazy. Nothing happened until use call `parse_into`.
 - [ ] test on real & large json file
 - [ ] add benchmark
 
+## Todo
+
+- [x] impl new JsonParser (v2)
+    - [x] store AST on linear array (avoid recursive which causing stack overflow)
+    - [x] rework Indexer
+        - [x] reindex object value from absolute -> relative
+    - [x] rework Deserialize
+- [ ] rework Deserialize phase to entirely remove recursive
+- [ ] Optimize
+    - [ ] `common::hash_str`
+    - [ ] replace `HashMap` with better solution
+    - [ ] check `move_backward_then_consume_until` method
 
 ## Road to 0.1
 
@@ -70,7 +94,18 @@ Everything done lazy. Nothing happened until use call `parse_into`.
 
 ## Road to 0.2
 
-- [ ] revamp project base on [JSON5](https://spec.json5.org/) specification
+- [ ] make it pass all test cases in JSON TestSuite
+- [x] revamp project base on [JSON5](https://spec.json5.org/) specification
+    - [x] escape character
+    - [x] number
+        - [x] integer
+        - [x] hexadecimal
+        - [x] fractional
+        - [x] exponential
+    - [x] new keywords (Infinity, NaN)
+    - [x] comment
+        - [x] single-line
+        - [x] multi-line
 - [ ] row & column tracking
 - [ ] enhance error message
     - [ ] Diagnostic struct (visualize location of error on input source)

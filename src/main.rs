@@ -11,10 +11,11 @@ fn main() {
     let mut s = String::new();
     let mut f = std::fs::File::open(path).expect("Unable to open file");
 
+    #[allow(clippy::single_match)]
     match std::io::Read::read_to_string(&mut f, &mut s) {
         Err(_) => std::process::exit(1),
-        Ok(_) => println!("{}", s),
-    }
+        Ok(_) => (),
+    };
 
     match JsonParser::new(&s).parse() {
         Ok(_) => std::process::exit(0),
