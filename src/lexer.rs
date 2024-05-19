@@ -291,11 +291,6 @@ impl <'a> Iterator for Tokenizer<'a> {
 
 impl <'a> Tokenizer<'a> {
     #[inline]
-    pub const fn is_end(&self) -> bool {
-        self.pos >= self.size
-    }
-
-    #[inline]
     pub const fn take_raw(&self, span: Span) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.ptr.add(span.start), span.gap()) }
     }
